@@ -2,6 +2,7 @@
 
     <PropertyGroup>
         <DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+        <UserSecretsId>peak-service</UserSecretsId>
     </PropertyGroup>
 
     <ItemGroup>

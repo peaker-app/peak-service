@@ -5,19 +5,22 @@ using PeakService.Domain.Peaks.Events;
 
 namespace PeakService.Infrastructure.Messaging;
 
-internal sealed class PeakCreatedDomainEventHandler(
-    IPublishEndpoint publishEndpoint,
-    IDateTimeProvider dateTimeProvider) : IDomainEventHandler<PeakCreatedDomainEvent>
+internal sealed class PeakCreatedDomainEventHandler(IPublishEndpoint publishEndpoint)
+    : IDomainEventHandler<PeakCreatedDomainEvent>
 {
-    public Task Handle(PeakCreatedDomainEvent domainEvent, CancellationToken cancellationToken) =>
+    public Task Handle(
+        PeakCreatedDomainEvent domainEvent,
+        DomainEventContext context,
+        CancellationToken cancellationToken) =>
         publishEndpoint.Publish(
             new PeakCreated
             {
+                MessageId = context.MessageId,
+                OccurredAtUtc = context.OccurredAtUtc,
                 PeakId = domainEvent.PeakId,
                 Name = domainEvent.Name,
                 AltitudeM = domainEvent.AltitudeMeters,
-                CountryCode = domainEvent.CountryCode,
-                OccurredAtUtc = dateTimeProvider.UtcNow
+                CountryCode = domainEvent.CountryCode
             },
             cancellationToken);
 }
