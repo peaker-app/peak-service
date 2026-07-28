@@ -6,17 +6,19 @@ Catálogo mundial de montañas y consultas geoespaciales. PostgreSQL 16 + PostGI
 ## Puesta en marcha local
 
 La cadena de conexión **no se versiona** (`ARCHITECTURE.md` §11, regla innegociable 8):
-`appsettings.json` y `appsettings.Development.json` la dejan vacía. Fuera de Docker se
-configura con `dotnet user-secrets`:
+`appsettings.json` y `appsettings.Development.json` la dejan vacía. Dentro de Docker la aporta
+`services-deployment/config/peak-service.env` mediante `ConnectionStrings__PeakDatabase`.
 
-```bash
-cd PeakService/PeakService.API
-dotnet user-secrets set "ConnectionStrings:PeakDatabase" \
-  "Server=localhost;Port=5433;Database=peaker_peaks;Username=<usuario>;Password=<contraseña>"
+Fuera de Docker se carga esa misma variable desde el `.env`, sin copiar la contraseña a ningún
+sitio. Sirve tanto para `dotnet run` como para `dotnet ef`:
+
+```powershell
+cd ..\services-deployment
+. .\scripts\Use-DevDatabase.ps1 peak        # bash: source ./scripts/use-dev-database.sh peak
 ```
 
-Dentro de Docker la aporta `services-deployment/config/peak-service.env` mediante
-`ConnectionStrings__PeakDatabase`.
+`dotnet user-secrets` es una alternativa válida para `dotnet run`, pero **`dotnet ef` la ignora**:
+`PeakDbContextFactory` tiene prioridad sobre el host de la API y solo lee la variable de entorno.
 
 El esquema no se aplica en el arranque (`ARCHITECTURE.md` §12). Fuera de Docker:
 

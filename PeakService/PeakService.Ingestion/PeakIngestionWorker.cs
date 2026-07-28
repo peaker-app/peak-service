@@ -1,10 +1,7 @@
 using Common.Domain.Results;
 using MediatR;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using PeakService.Application.Ingestion.RunPeakIngestion;
+using PeakService.Ingestion.RunPeakIngestion;
 
 namespace PeakService.Ingestion;
 

@@ -1,4 +1,4 @@
-namespace PeakService.Application.Ingestion.RunPeakIngestion;
+namespace PeakService.Ingestion.RunPeakIngestion;
 
 public enum IngestionMode
 {

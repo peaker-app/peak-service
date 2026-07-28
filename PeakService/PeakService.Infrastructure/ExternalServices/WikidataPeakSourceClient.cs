@@ -1,5 +1,3 @@
-using System.Globalization;
-using System.Net.Http.Json;
 using System.Runtime.CompilerServices;
 using Microsoft.Extensions.Options;
 using PeakService.Application.Abstractions;
@@ -10,156 +8,209 @@ namespace PeakService.Infrastructure.ExternalServices;
 internal sealed class WikidataPeakSourceClient(HttpClient httpClient, IOptions<IngestionOptions> options)
     : IPeakSourceClient
 {
-    private const string EntityPrefix = "http://www.wikidata.org/entity/";
-    private const string PointPrefix = "Point(";
+    private readonly SparqlEndpoint _endpoint = new(httpClient);
 
-    public async IAsyncEnumerable<PeakSourceRecord> StreamAsync(
+    public async IAsyncEnumerable<PeakSourcePartition> StreamAsync(
         PeakSourceCursor cursor,
         [EnumeratorCancellation] CancellationToken cancellationToken)
     {
-        IngestionOptions settings = options.Value;
+        SweepState state = new(options.Value, cursor);
 
-        for (int offset = 0; ; offset += settings.PageSize)
+        await foreach (PeakSourcePartition partition in
+            SweepAsync(ElevationBandPlan.Build(state.Settings, cursor), state, cancellationToken))
         {
-            SparqlPage page = new(offset, PageTake(offset, settings));
+            yield return partition;
+        }
 
-            if (page.Take == 0)
-            {
-                yield break;
-            }
+        if (state.Deferred.Count == 0 || state.ReachedLimit)
+        {
+            yield break;
+        }
 
-            IReadOnlyList<PeakSourceRecord> records = await FetchAsync(cursor, page, cancellationToken);
+        List<ElevationBand> retried = state.StartFinalPass();
 
-            foreach (PeakSourceRecord record in records)
-            {
-                yield return record;
-            }
+        await Task.Delay(state.Settings.DeferredRetryDelay, cancellationToken);
 
-            if (records.Count < page.Take)
-            {
-                yield break;
-            }
-
-            await Task.Delay(settings.DelayBetweenPages, cancellationToken);
+        await foreach (PeakSourcePartition partition in SweepAsync(retried, state, cancellationToken))
+        {
+            yield return partition;
         }
     }
 
-    private static int PageTake(int offset, IngestionOptions settings) =>
-        settings.MaxRecords is { } max
-            ? Math.Clamp(max - offset, 0, settings.PageSize)
-            : settings.PageSize;
+    private async IAsyncEnumerable<PeakSourcePartition> SweepAsync(
+        IReadOnlyList<ElevationBand> bands,
+        SweepState state,
+        [EnumeratorCancellation] CancellationToken cancellationToken)
+    {
+        Stack<ElevationBand> pending = new(bands.Reverse());
 
-    private async Task<IReadOnlyList<PeakSourceRecord>> FetchAsync(
-        PeakSourceCursor cursor,
-        SparqlPage page,
+        while (pending.Count > 0)
+        {
+            ElevationBand band = pending.Pop();
+            BandResult result = await LoadAsync(band, state, cancellationToken);
+
+            if (result.IsFailed && Reschedule(band, result, state, pending))
+            {
+                continue;
+            }
+
+            yield return result.Partition;
+
+            if (state.ReachedLimit)
+            {
+                yield break;
+            }
+
+            await Task.Delay(state.Settings.DelayBetweenRequests, cancellationToken);
+        }
+    }
+
+    private async Task<BandResult> LoadAsync(
+        ElevationBand band,
+        SweepState state,
         CancellationToken cancellationToken)
     {
-        string query = WikidataSparqlQuery.Build(options.Value, cursor.ModifiedSinceUtc, page);
+        SparqlOutcome outcome = await _endpoint.ExecuteAsync(
+            WikidataSparqlQuery.BuildCatalog(state.Settings, state.Cursor, band), cancellationToken);
 
-        using FormUrlEncodedContent content = new([new KeyValuePair<string, string>("query", query)]);
-        using HttpResponseMessage response = await httpClient.PostAsync((Uri?)null, content, cancellationToken);
-
-        response.EnsureSuccessStatusCode();
-
-        SparqlResponse? payload = await response.Content
-            .ReadFromJsonAsync<SparqlResponse>(cancellationToken);
-
-        return [.. (payload?.Results?.Bindings ?? []).Select(ToRecord).OfType<PeakSourceRecord>()];
+        return outcome.IsFailed
+            ? new BandResult(
+                PeakSourcePartition.Failed($"Band {band} could not be loaded. {outcome.FailureReason}"),
+                outcome.IsRetriable)
+            : await AcceptAsync(outcome, state, cancellationToken);
     }
 
-    private static PeakSourceRecord? ToRecord(Dictionary<string, SparqlBinding> binding)
-    {
-        string? wikidataId = ReadEntityId(binding, "item");
-        string? name = Read(binding, "itemLabel");
+    private static bool Reschedule(
+        ElevationBand band,
+        BandResult result,
+        SweepState state,
+        Stack<ElevationBand> pending) =>
+        result.IsRetriable && (TrySplit(band, state.Settings, pending) || state.TryDefer(band));
 
-        if (wikidataId is null || string.IsNullOrWhiteSpace(name) || !TryReadPoint(binding, out double latitude, out double longitude))
+    private static bool TrySplit(ElevationBand band, IngestionOptions settings, Stack<ElevationBand> pending)
+    {
+        if (band.IsUnbounded)
         {
-            return null;
+            return PushAll(ElevationBandPlan.FullSweep(settings), pending);
         }
 
-        return new PeakSourceRecord(
-            wikidataId,
-            name,
-            ReadAltitude(binding),
-            ProminenceMeters: null,
-            latitude,
-            longitude,
-            Read(binding, "countryCode")?.ToUpperInvariant(),
-            Read(binding, "adminLabel"),
-            Read(binding, "modified"))
-        {
-            AlternativeNames = ReadAlternativeNames(binding, name)
-        };
-    }
-
-    private static IReadOnlyList<PeakNameDraft> ReadAlternativeNames(
-        Dictionary<string, SparqlBinding> binding,
-        string canonicalName)
-    {
-        string? names = Read(binding, "names");
-
-        if (names is null)
-        {
-            return [];
-        }
-
-        return
-        [
-            .. names.Split(WikidataSparqlQuery.NameSeparator, StringSplitOptions.RemoveEmptyEntries)
-                .Select(ToNameDraft)
-                .OfType<PeakNameDraft>()
-                .Where(draft => !string.Equals(draft.Name, canonicalName, StringComparison.OrdinalIgnoreCase))
-                .DistinctBy(draft => (draft.LanguageCode, draft.Name))
-        ];
-    }
-
-    private static PeakNameDraft? ToNameDraft(string entry)
-    {
-        string[] parts = entry.Split(WikidataSparqlQuery.NameFieldSeparator, 3);
-
-        return parts.Length == 3 && !string.IsNullOrWhiteSpace(parts[2])
-            ? new PeakNameDraft(parts[0], parts[2], parts[1] == "1")
-            : null;
-    }
-
-    private static int ReadAltitude(Dictionary<string, SparqlBinding> binding) =>
-        double.TryParse(Read(binding, "elevation"), NumberStyles.Float, CultureInfo.InvariantCulture, out double meters)
-            ? (int)Math.Round(meters)
-            : 0;
-
-    private static bool TryReadPoint(
-        Dictionary<string, SparqlBinding> binding,
-        out double latitude,
-        out double longitude)
-    {
-        latitude = 0;
-        longitude = 0;
-
-        string? point = Read(binding, "coord");
-
-        if (point is null || !point.StartsWith(PointPrefix, StringComparison.OrdinalIgnoreCase))
+        if (!band.CanSplit(settings.MinElevationBandMeters))
         {
             return false;
         }
 
-        string[] parts = point[PointPrefix.Length..].TrimEnd(')').Split(' ');
+        (ElevationBand lower, ElevationBand upper) = band.Split();
 
-        return parts.Length == 2
-            && double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out longitude)
-            && double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out latitude);
+        return PushAll([lower, upper], pending);
     }
 
-    private static string? ReadEntityId(Dictionary<string, SparqlBinding> binding, string key)
+    private static bool PushAll(List<ElevationBand> bands, Stack<ElevationBand> pending)
     {
-        string? uri = Read(binding, key);
+        for (int index = bands.Count - 1; index >= 0; index--)
+        {
+            pending.Push(bands[index]);
+        }
 
-        return uri is null || !uri.StartsWith(EntityPrefix, StringComparison.Ordinal)
-            ? null
-            : uri[EntityPrefix.Length..];
+        return true;
     }
 
-    private static string? Read(Dictionary<string, SparqlBinding> binding, string key) =>
-        binding.TryGetValue(key, out SparqlBinding? value) && !string.IsNullOrWhiteSpace(value.Value)
-            ? value.Value
-            : null;
+    private async Task<BandResult> AcceptAsync(
+        SparqlOutcome outcome,
+        SweepState state,
+        CancellationToken cancellationToken)
+    {
+        List<PeakSourceRecord> records = Deduplicate(outcome.Bindings, state);
+        BandResult result = await EnrichAsync(records, state.Settings, cancellationToken);
+
+        if (!result.IsFailed)
+        {
+            state.Commit(records);
+        }
+
+        return result;
+    }
+
+    private static List<PeakSourceRecord> Deduplicate(
+        IReadOnlyList<Dictionary<string, SparqlBinding>> bindings,
+        SweepState state)
+    {
+        List<PeakSourceRecord> records = [];
+        HashSet<string> batch = [];
+
+        foreach (Dictionary<string, SparqlBinding> binding in bindings)
+        {
+            if (state.WouldReachLimit(batch.Count))
+            {
+                break;
+            }
+
+            if (SparqlBindingReader.ToRecord(binding) is { } record
+                && !state.AlreadySeen(record.WikidataId)
+                && batch.Add(record.WikidataId))
+            {
+                records.Add(record);
+            }
+        }
+
+        return records;
+    }
+
+    private async Task<BandResult> EnrichAsync(
+        IReadOnlyList<PeakSourceRecord> records,
+        IngestionOptions settings,
+        CancellationToken cancellationToken)
+    {
+        Dictionary<string, List<PeakNameDraft>> names = [];
+
+        foreach (string[] batch in records.Select(record => record.WikidataId).Chunk(settings.NameBatchSize))
+        {
+            SparqlOutcome outcome = await _endpoint.ExecuteAsync(
+                WikidataSparqlQuery.BuildNames(settings, batch), cancellationToken);
+
+            if (outcome.IsFailed)
+            {
+                return new BandResult(
+                    PeakSourcePartition.Failed(
+                        $"Names for {batch.Length} peaks could not be loaded. {outcome.FailureReason}"),
+                    outcome.IsRetriable);
+            }
+
+            Collect(outcome.Bindings, names);
+        }
+
+        return new BandResult(
+            PeakSourcePartition.Loaded([.. records.Select(record => Attach(record, names))]),
+            IsRetriable: false);
+    }
+
+    private static void Collect(
+        IReadOnlyList<Dictionary<string, SparqlBinding>> bindings,
+        Dictionary<string, List<PeakNameDraft>> names)
+    {
+        foreach (Dictionary<string, SparqlBinding> binding in bindings)
+        {
+            if (SparqlBindingReader.ToNameDraft(binding) is { } entry)
+            {
+                names.TryAdd(entry.WikidataId, []);
+                names[entry.WikidataId].Add(entry.Name);
+            }
+        }
+    }
+
+    private static PeakSourceRecord Attach(PeakSourceRecord record, Dictionary<string, List<PeakNameDraft>> names) =>
+        names.TryGetValue(record.WikidataId, out List<PeakNameDraft>? drafts)
+            ? record with { AlternativeNames = Alternatives(drafts, record.Name) }
+            : record;
+
+    private static IReadOnlyList<PeakNameDraft> Alternatives(List<PeakNameDraft> drafts, string canonicalName) =>
+    [
+        .. drafts
+            .Where(draft => !string.Equals(draft.Name, canonicalName, StringComparison.OrdinalIgnoreCase))
+            .DistinctBy(draft => (draft.LanguageCode, draft.Name))
+    ];
+
+    private sealed record BandResult(PeakSourcePartition Partition, bool IsRetriable)
+    {
+        public bool IsFailed => Partition.IsFailed;
+    }
 }

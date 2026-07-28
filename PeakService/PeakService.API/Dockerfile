@@ -31,7 +31,7 @@ ARG BUILD_CONFIGURATION=Release
 RUN dotnet publish peak-service/PeakService/PeakService.Ingestion/PeakService.Ingestion.csproj \
     -c $BUILD_CONFIGURATION -o /app/ingestion /p:UseAppHost=false
 
-FROM mcr.microsoft.com/dotnet/runtime:10.0 AS worker
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS worker
 WORKDIR /app
 COPY --from=worker-build /app/ingestion .
 USER $APP_UID

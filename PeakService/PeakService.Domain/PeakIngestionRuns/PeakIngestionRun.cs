@@ -42,6 +42,9 @@ public sealed class PeakIngestionRun : AggregateRoot
 
     public Result Complete(DateTime finishedAtUtc) => Finish(IngestionStatus.Completed, finishedAtUtc, error: null);
 
+    public Result CompletePartially(string error, DateTime finishedAtUtc) =>
+        Finish(IngestionStatus.Partial, finishedAtUtc, error);
+
     public Result Fail(string error, DateTime finishedAtUtc) =>
         Finish(IngestionStatus.Failed, finishedAtUtc, error);
 

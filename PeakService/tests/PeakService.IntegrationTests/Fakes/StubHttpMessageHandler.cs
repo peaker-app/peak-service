@@ -3,13 +3,18 @@ using System.Net.Http.Headers;
 
 namespace PeakService.IntegrationTests.Fakes;
 
-internal sealed class StubHttpMessageHandler(params string[] responses) : HttpMessageHandler
+internal sealed class StubHttpMessageHandler(params StubbedResponse[] responses) : HttpMessageHandler
 {
+    private const string EmptyResults = """{"results":{"bindings":[]}}""";
+
     private int _calls;
 
     public List<string> ReceivedQueries { get; } = [];
 
     public List<string?> ReceivedUserAgents { get; } = [];
+
+    public static StubHttpMessageHandler WithBodies(params string[] bodies) =>
+        new([.. bodies.Select(StubbedResponse.Ok)]);
 
     protected override async Task<HttpResponseMessage> SendAsync(
         HttpRequestMessage request,
@@ -20,17 +25,25 @@ internal sealed class StubHttpMessageHandler(params string[] responses) : HttpMe
             ? string.Empty
             : await request.Content.ReadAsStringAsync(cancellationToken));
 
-        string body = _calls < responses.Length ? responses[_calls] : EmptyResults;
+        StubbedResponse stubbed = _calls < responses.Length
+            ? responses[_calls]
+            : StubbedResponse.Ok(EmptyResults);
+
         _calls++;
 
-        HttpResponseMessage response = new(HttpStatusCode.OK)
+        HttpResponseMessage response = new(stubbed.StatusCode)
         {
-            Content = new StringContent(body)
+            Content = new StringContent(stubbed.Body)
         };
         response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/sparql-results+json");
 
         return response;
     }
+}
 
-    private const string EmptyResults = """{"results":{"bindings":[]}}""";
+internal sealed record StubbedResponse(HttpStatusCode StatusCode, string Body)
+{
+    public static StubbedResponse Ok(string body) => new(HttpStatusCode.OK, body);
+
+    public static StubbedResponse Status(HttpStatusCode statusCode) => new(statusCode, string.Empty);
 }

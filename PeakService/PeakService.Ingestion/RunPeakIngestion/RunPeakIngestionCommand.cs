@@ -1,5 +1,5 @@
 using Common.Application.Messaging;
 
-namespace PeakService.Application.Ingestion.RunPeakIngestion;
+namespace PeakService.Ingestion.RunPeakIngestion;
 
 public sealed record RunPeakIngestionCommand(IngestionMode Mode) : ICommand<PeakIngestionRunResponse>;

@@ -4,13 +4,13 @@ using FluentAssertions;
 using Microsoft.Extensions.Logging;
 using NSubstitute;
 using PeakService.Application.Abstractions;
-using PeakService.Application.Ingestion.RunPeakIngestion;
-using PeakService.Application.UnitTests.TestData;
 using PeakService.Domain.PeakIngestionRuns;
 using PeakService.Domain.Peaks;
+using PeakService.Ingestion.RunPeakIngestion;
+using PeakService.Ingestion.UnitTests.TestData;
 using Xunit;
 
-namespace PeakService.Application.UnitTests.Ingestion;
+namespace PeakService.Ingestion.UnitTests;
 
 public sealed class RunPeakIngestionCommandHandlerTests
 {
@@ -153,6 +153,45 @@ public sealed class RunPeakIngestionCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WhenAPartitionFails_MarksTheRunAsPartialAndKeepsTheReason()
+    {
+        GivenPartitions(
+            PeakSourcePartition.Loaded([PeakSourceRecords.Valid()]),
+            PeakSourcePartition.Failed("Band [3000, 3250) could not be loaded. HTTP 504"));
+        GivenNoDuplicate();
+
+        Result<PeakIngestionRunResponse> result = await RunAsync();
+
+        result.Value.Status.Should().Be(nameof(IngestionStatus.Partial));
+        result.Value.Error.Should().Contain("[3000, 3250)");
+    }
+
+    [Fact]
+    public async Task Handle_WhenAPartitionFails_StillPersistsThePeaksOfTheHealthyOnes()
+    {
+        GivenPartitions(
+            PeakSourcePartition.Failed("Band [0, 250) could not be loaded. HTTP 504"),
+            PeakSourcePartition.Loaded([PeakSourceRecords.Valid()]));
+        GivenNoDuplicate();
+
+        Result<PeakIngestionRunResponse> result = await RunAsync();
+
+        result.Value.PeaksCreated.Should().Be(1);
+        _peakRepository.Received(1).Add(Arg.Any<Peak>());
+    }
+
+    [Fact]
+    public async Task Handle_WhenEveryPartitionSucceeds_MarksTheRunAsCompleted()
+    {
+        GivenSource(PeakSourceRecords.Valid());
+        GivenNoDuplicate();
+
+        Result<PeakIngestionRunResponse> result = await RunAsync();
+
+        result.Value.Status.Should().Be(nameof(IngestionStatus.Completed));
+    }
+
+    [Fact]
     public async Task Handle_Always_RegistersTheRunBeforeIngesting()
     {
         GivenSource();
@@ -209,8 +248,11 @@ public sealed class RunPeakIngestionCommandHandlerTests
                 Arg.Any<CancellationToken>());
 
     private void GivenSource(params PeakSourceRecord[] records) =>
+        GivenPartitions(PeakSourcePartition.Loaded(records));
+
+    private void GivenPartitions(params PeakSourcePartition[] partitions) =>
         _sourceClient.StreamAsync(Arg.Any<PeakSourceCursor>(), Arg.Any<CancellationToken>())
-            .Returns(AsyncSequence.Of(records));
+            .Returns(AsyncSequence.Of(partitions));
 
     private void GivenNoDuplicate() =>
         _deduplication.FindMatchAsync(Arg.Any<PeakSourceData>(), Arg.Any<CancellationToken>())

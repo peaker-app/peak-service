@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Headers;
 using FluentAssertions;
 using Microsoft.Extensions.Options;
@@ -26,15 +27,40 @@ public sealed class WikidataPeakSourceClientTests
         ]}}
         """;
 
-    private const string MatterhornWithNames =
+    private const string OnePeakTwice =
+        """
+        {"results":{"bindings":[
+          {"item":{"value":"http://www.wikidata.org/entity/Q192580"},
+           "itemLabel":{"value":"Aneto"},"elevation":{"value":"3404"},
+           "coord":{"value":"Point(0.6577 42.6316)"},"adminLabel":{"value":"Huesca"}},
+          {"item":{"value":"http://www.wikidata.org/entity/Q192580"},
+           "itemLabel":{"value":"Aneto"},"elevation":{"value":"3404"},
+           "coord":{"value":"Point(0.6577 42.6316)"},"adminLabel":{"value":"Benasque"}}
+        ]}}
+        """;
+
+    private const string Matterhorn =
         """
         {"results":{"bindings":[
           {"item":{"value":"http://www.wikidata.org/entity/Q1291"},
            "itemLabel":{"value":"Matterhorn"},
            "elevation":{"value":"4478"},
            "coord":{"value":"Point(7.6586 45.9763)"},
-           "modified":{"value":"2026-07-01T10:00:00Z"},
-           "names":{"value":"it~1~Cervino||fr~1~Cervin||it~0~Monte Cervino||de~1~Matterhorn"}}
+           "modified":{"value":"2026-07-01T10:00:00Z"}}
+        ]}}
+        """;
+
+    private const string MatterhornNames =
+        """
+        {"results":{"bindings":[
+          {"item":{"value":"http://www.wikidata.org/entity/Q1291"},
+           "name":{"value":"Cervino","xml:lang":"it"},"official":{"value":"1"}},
+          {"item":{"value":"http://www.wikidata.org/entity/Q1291"},
+           "name":{"value":"Cervin","xml:lang":"fr"},"official":{"value":"1"}},
+          {"item":{"value":"http://www.wikidata.org/entity/Q1291"},
+           "name":{"value":"Monte Cervino","xml:lang":"it"},"official":{"value":"0"}},
+          {"item":{"value":"http://www.wikidata.org/entity/Q1291"},
+           "name":{"value":"Matterhorn","xml:lang":"de"},"official":{"value":"1"}}
         ]}}
         """;
 
@@ -47,10 +73,14 @@ public sealed class WikidataPeakSourceClientTests
         ]}}
         """;
 
+    private const string NoNames = """{"results":{"bindings":[]}}""";
+
+    private const string NoPeaks = """{"results":{"bindings":[]}}""";
+
     [Fact]
     public async Task StreamAsync_MapsEveryFieldOfTheSparqlBinding()
     {
-        List<PeakSourceRecord> records = await StreamAsync(new StubHttpMessageHandler(OnePeak));
+        List<PeakSourceRecord> records = await RecordsAsync(StubHttpMessageHandler.WithBodies(OnePeak, NoNames));
 
         records.Should().ContainSingle().Which.Should().BeEquivalentTo(new PeakSourceRecord(
             "Q192580",
@@ -65,9 +95,18 @@ public sealed class WikidataPeakSourceClientTests
     }
 
     [Fact]
-    public async Task StreamAsync_ParsesLabelsAndAliasesIntoAlternativeNames()
+    public async Task StreamAsync_SkipsBindingsWithoutCoordinates()
     {
-        List<PeakSourceRecord> records = await StreamAsync(new StubHttpMessageHandler(MatterhornWithNames));
+        List<PeakSourceRecord> records = await RecordsAsync(StubHttpMessageHandler.WithBodies(PeakWithoutCoordinates));
+
+        records.Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task StreamAsync_MergesTheNamesFetchedInASeparateBatch()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(Matterhorn, MatterhornNames));
 
         records.Single().AlternativeNames.Should().BeEquivalentTo(
         [
@@ -80,107 +119,225 @@ public sealed class WikidataPeakSourceClientTests
     [Fact]
     public async Task StreamAsync_DoesNotRepeatTheCanonicalNameAsAnAlternativeOne()
     {
-        List<PeakSourceRecord> records = await StreamAsync(new StubHttpMessageHandler(MatterhornWithNames));
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(Matterhorn, MatterhornNames));
 
         records.Single().AlternativeNames.Should().NotContain(name => name.Name == "Matterhorn");
     }
 
     [Fact]
-    public async Task StreamAsync_RequestsOnlyTheConfiguredLanguages()
+    public async Task StreamAsync_DeduplicatesRowsRepeatedByMultivaluedProperties()
     {
-        StubHttpMessageHandler handler = new(OnePeak);
+        List<PeakSourceRecord> records = await RecordsAsync(StubHttpMessageHandler.WithBodies(OnePeakTwice, NoNames));
 
-        await StreamAsync(handler, languages: ["es", "it"]);
-
-        handler.ReceivedQueries[0].Should().Contain("%22es%22%2C%22it%22");
+        records.Should().ContainSingle().Which.WikidataId.Should().Be("Q192580");
     }
 
     [Fact]
-    public async Task StreamAsync_SkipsBindingsWithoutCoordinates()
+    public async Task StreamAsync_SplitsTheBandInHalfWhenTheEndpointTimesOut()
     {
-        List<PeakSourceRecord> records = await StreamAsync(new StubHttpMessageHandler(PeakWithoutCoordinates));
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Status(HttpStatusCode.GatewayTimeout),
+            StubbedResponse.Ok(OnePeak),
+            StubbedResponse.Ok(NoNames));
 
-        records.Should().BeEmpty();
+        List<PeakSourcePartition> partitions = await PartitionsAsync(handler, Settings(bandMeters: 9000));
+
+        partitions.Should().NotContain(partition => partition.IsFailed);
+        handler.ReceivedQueries[1].Should().Contain("%3E%3D+0").And.Contain("%3C+9000");
+        handler.ReceivedQueries[2].Should().Contain("%3E%3D+0").And.Contain("%3C+4500");
     }
 
     [Fact]
-    public async Task StreamAsync_StopsWhenAPageIsNotFull()
+    public async Task StreamAsync_RetriesAnExhaustedBandInADeferredSecondPass()
     {
-        StubHttpMessageHandler handler = new(OnePeak);
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Status(HttpStatusCode.GatewayTimeout),
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(OnePeak),
+            StubbedResponse.Ok(NoNames));
 
-        await StreamAsync(handler);
+        List<PeakSourcePartition> partitions = await PartitionsAsync(
+            handler, Settings(bandMeters: 9000, minBandMeters: 9000));
 
-        handler.ReceivedQueries.Should().ContainSingle();
+        partitions.Should().NotContain(partition => partition.IsFailed);
+        partitions.SelectMany(partition => partition.Records).Should().ContainSingle();
+        handler.ReceivedQueries[3].Should().Contain("%3E%3D+0").And.Contain("%3C+9000");
     }
 
     [Fact]
-    public async Task StreamAsync_RequestsFurtherPagesWhileTheyComeFull()
+    public async Task StreamAsync_ReportsAFailedPartitionWhenTheBandFailsInBothPasses()
     {
-        StubHttpMessageHandler handler = new(OnePeak, OnePeak);
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Status(HttpStatusCode.GatewayTimeout),
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Status(HttpStatusCode.GatewayTimeout));
 
-        await StreamAsync(handler, pageSize: 1);
+        List<PeakSourcePartition> partitions = await PartitionsAsync(
+            handler, Settings(bandMeters: 9000, minBandMeters: 9000));
+
+        partitions.Should().ContainSingle(partition => partition.IsFailed)
+            .Which.FailureReason.Should().Contain("504");
+    }
+
+    [Fact]
+    public async Task StreamAsync_DoesNotSplitNorDeferOnANonRetriableStatus()
+    {
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Status(HttpStatusCode.BadRequest));
+
+        List<PeakSourcePartition> partitions = await PartitionsAsync(handler, Settings(bandMeters: 9000));
+
+        partitions.Should().ContainSingle(partition => partition.IsFailed)
+            .Which.FailureReason.Should().Contain("400");
+        handler.ReceivedQueries.Should().HaveCount(3);
+    }
+
+    [Fact]
+    public async Task StreamAsync_WhenTheNamesBatchFails_DoesNotLoseThePeaksOnTheDeferredRetry()
+    {
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(OnePeak),
+            StubbedResponse.Status(HttpStatusCode.TooManyRequests),
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(OnePeak),
+            StubbedResponse.Ok(NoNames));
+
+        List<PeakSourcePartition> partitions = await PartitionsAsync(handler, Settings(bandMeters: 9000));
+
+        partitions.SelectMany(partition => partition.Records).Should().ContainSingle()
+            .Which.WikidataId.Should().Be("Q192580");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithMaxRecordsReached_SkipsTheDeferredPass()
+    {
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Status(HttpStatusCode.GatewayTimeout),
+            StubbedResponse.Ok(OnePeak),
+            StubbedResponse.Ok(NoNames));
+
+        await PartitionsAsync(handler, Settings(bandMeters: 9000, minBandMeters: 9000, maxRecords: 1));
 
         handler.ReceivedQueries.Should().HaveCount(3);
-        handler.ReceivedQueries[1].Should().Contain("OFFSET+1");
     }
 
     [Fact]
-    public async Task StreamAsync_SendsTheConfiguredUserAgent()
+    public async Task StreamAsync_CoversTheWholeElevationDomainWithOpenEndedBands()
     {
-        StubHttpMessageHandler handler = new(OnePeak);
+        StubHttpMessageHandler handler = new();
 
-        await StreamAsync(handler);
+        await PartitionsAsync(handler, Settings(bandMeters: 9000));
 
-        handler.ReceivedUserAgents.Should().ContainSingle().Which.Should().Be(UserAgent);
+        handler.ReceivedQueries.Should().HaveCount(3);
+        handler.ReceivedQueries[0].Should().Contain("%3C+0").And.NotContain("%3E%3D");
+        handler.ReceivedQueries[2].Should().Contain("%3E%3D+9000").And.NotContain("%26%26");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithIncrementalCursor_UsesASingleUnboundedRequest()
+    {
+        StubHttpMessageHandler handler = StubHttpMessageHandler.WithBodies(OnePeak, NoNames);
+        PeakSourceCursor cursor = PeakSourceCursor.Since(new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        await PartitionsAsync(handler, Settings(), cursor);
+
+        handler.ReceivedQueries.Should().HaveCount(2);
+        handler.ReceivedQueries[0].Should().Contain("2026-07-01T00%3A00%3A00Z").And.NotContain("elevation+%3E%3D");
+    }
+
+    [Fact]
+    public async Task StreamAsync_FallsBackToTheBandedSweepWhenTheUnboundedRequestTimesOut()
+    {
+        StubHttpMessageHandler handler = new(StubbedResponse.Status(HttpStatusCode.GatewayTimeout));
+        PeakSourceCursor cursor = PeakSourceCursor.Since(new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc));
+
+        List<PeakSourcePartition> partitions = await PartitionsAsync(handler, Settings(bandMeters: 9000), cursor);
+
+        partitions.Should().NotContain(partition => partition.IsFailed);
+        handler.ReceivedQueries.Should().HaveCount(4);
+        handler.ReceivedQueries[1].Should().Contain("%3C+0");
     }
 
     [Fact]
     public async Task StreamAsync_WithoutCursor_DoesNotFilterByModificationDate()
     {
-        StubHttpMessageHandler handler = new(OnePeak);
+        StubHttpMessageHandler handler = StubHttpMessageHandler.WithBodies(OnePeak, NoNames);
 
-        await StreamAsync(handler);
+        await PartitionsAsync(handler, Settings(bandMeters: 9000));
 
         handler.ReceivedQueries[0].Should().NotContain("xsd%3AdateTime");
     }
 
     [Fact]
-    public async Task StreamAsync_WithIncrementalCursor_FiltersByModificationDate()
+    public async Task StreamAsync_RequestsOnlyTheConfiguredLanguages()
     {
-        StubHttpMessageHandler handler = new(OnePeak);
-        PeakSourceCursor cursor = PeakSourceCursor.Since(new DateTime(2026, 7, 1, 0, 0, 0, DateTimeKind.Utc));
+        StubHttpMessageHandler handler = StubHttpMessageHandler.WithBodies(OnePeak, NoNames);
 
-        await StreamAsync(handler, cursor: cursor);
+        await PartitionsAsync(handler, Settings(bandMeters: 9000, languages: ["es", "it"]));
 
-        handler.ReceivedQueries[0].Should().Contain("2026-07-01T00%3A00%3A00Z");
+        handler.ReceivedQueries[1].Should().Contain("%22es%22%2C%22it%22");
     }
 
     [Fact]
     public async Task StreamAsync_WithMaxRecords_StopsAtTheConfiguredBound()
     {
-        StubHttpMessageHandler handler = new(OnePeak, OnePeak, OnePeak);
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(OnePeak),
+            StubbedResponse.Ok(NoNames),
+            StubbedResponse.Ok(Matterhorn),
+            StubbedResponse.Ok(NoNames));
 
-        List<PeakSourceRecord> records = await StreamAsync(handler, pageSize: 1, maxRecords: 2);
+        List<PeakSourceRecord> records = await RecordsAsync(handler, Settings(maxRecords: 1));
 
-        records.Should().HaveCount(2);
+        records.Should().ContainSingle();
     }
 
-    private static async Task<List<PeakSourceRecord>> StreamAsync(
-        StubHttpMessageHandler handler,
-        int pageSize = 500,
-        int? maxRecords = null,
-        PeakSourceCursor? cursor = null,
-        IReadOnlyList<string>? languages = null)
+    [Fact]
+    public async Task StreamAsync_SendsTheConfiguredUserAgent()
     {
-        IngestionOptions settings = new()
+        StubHttpMessageHandler handler = StubHttpMessageHandler.WithBodies(OnePeak, NoNames);
+
+        await PartitionsAsync(handler, Settings(bandMeters: 9000));
+
+        handler.ReceivedUserAgents.Should().AllBe(UserAgent);
+    }
+
+    private static IngestionOptions Settings(
+        double bandMeters = 9000,
+        double minBandMeters = 15,
+        int? maxRecords = null,
+        IReadOnlyList<string>? languages = null) =>
+        new()
         {
-            PageSize = pageSize,
             MaxRecords = maxRecords,
-            DelayBetweenPages = TimeSpan.Zero,
+            ElevationBandMeters = bandMeters,
+            MinElevationBandMeters = minBandMeters,
+            DelayBetweenRequests = TimeSpan.Zero,
+            DeferredRetryDelay = TimeSpan.Zero,
             UserAgent = UserAgent,
             AlternativeNameLanguages = languages ?? ["es", "en"]
         };
 
+    private static async Task<List<PeakSourceRecord>> RecordsAsync(
+        StubHttpMessageHandler handler,
+        IngestionOptions? settings = null)
+    {
+        List<PeakSourcePartition> partitions = await PartitionsAsync(handler, settings ?? Settings());
+
+        return [.. partitions.SelectMany(partition => partition.Records)];
+    }
+
+    private static async Task<List<PeakSourcePartition>> PartitionsAsync(
+        StubHttpMessageHandler handler,
+        IngestionOptions settings,
+        PeakSourceCursor? cursor = null)
+    {
         using HttpClient httpClient = new(handler) { BaseAddress = settings.Endpoint };
         httpClient.DefaultRequestHeaders.UserAgent.ParseAdd(settings.UserAgent);
         httpClient.DefaultRequestHeaders.Accept.Add(
@@ -188,13 +345,14 @@ public sealed class WikidataPeakSourceClientTests
 
         WikidataPeakSourceClient client = new(httpClient, Options.Create(settings));
 
-        List<PeakSourceRecord> records = [];
+        List<PeakSourcePartition> partitions = [];
 
-        await foreach (PeakSourceRecord record in client.StreamAsync(cursor ?? PeakSourceCursor.Full, CancellationToken.None))
+        await foreach (PeakSourcePartition partition in
+            client.StreamAsync(cursor ?? PeakSourceCursor.Full, CancellationToken.None))
         {
-            records.Add(record);
+            partitions.Add(partition);
         }
 
-        return records;
+        return partitions;
     }
 }

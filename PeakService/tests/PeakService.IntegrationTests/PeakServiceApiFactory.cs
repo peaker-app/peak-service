@@ -5,11 +5,14 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Hosting;
+using PeakService.Application;
 using PeakService.Application.Abstractions;
 using PeakService.Domain.MountainRanges;
 using PeakService.Domain.Peaks;
 using PeakService.Infrastructure;
 using PeakService.Infrastructure.Persistence;
+using PeakService.Ingestion.RunPeakIngestion;
 using PeakService.IntegrationTests.Fakes;
 using Testcontainers.PostgreSql;
 using Testcontainers.RabbitMq;
@@ -30,7 +33,12 @@ public sealed class PeakServiceApiFactory : WebApplicationFactory<Program>, IAsy
         .WithPassword("peaker")
         .Build();
 
+    private IHost? _ingestionHost;
+
     public FakePeakSourceClient PeakSource { get; } = new();
+
+    public IServiceProvider IngestionServices =>
+        _ingestionHost?.Services ?? throw new InvalidOperationException("The ingestion host is not built yet.");
 
     public async Task ResetAsync()
     {
@@ -75,25 +83,7 @@ public sealed class PeakServiceApiFactory : WebApplicationFactory<Program>, IAsy
         builder.UseEnvironment("Development");
 
         builder.ConfigureAppConfiguration((_, configuration) =>
-            configuration.AddInMemoryCollection(new Dictionary<string, string?>
-            {
-                ["ConnectionStrings:PeakDatabase"] = _postgres.GetConnectionString(),
-                ["Messaging:Host"] = _rabbitMq.Hostname,
-                ["Messaging:Port"] = _rabbitMq.GetMappedPublicPort(5672).ToString(CultureInfo.InvariantCulture),
-                ["Messaging:Username"] = "peaker",
-                ["Messaging:Password"] = "peaker",
-                ["Messaging:VirtualHost"] = "/",
-                ["Outbox:PollingInterval"] = "00:00:01",
-                ["Ingestion:Endpoint"] = "https://query.wikidata.org/sparql",
-                ["Ingestion:UserAgent"] = "PeakerIngestionTests/1.0 (tests)"
-            }));
-
-        builder.ConfigureServices((context, services) =>
-        {
-            services.AddIngestion(context.Configuration);
-            services.RemoveAll<IPeakSourceClient>();
-            services.AddSingleton<IPeakSourceClient>(PeakSource);
-        });
+            configuration.AddInMemoryCollection(SharedSettings()));
     }
 
     async Task IAsyncLifetime.InitializeAsync()
@@ -103,12 +93,45 @@ public sealed class PeakServiceApiFactory : WebApplicationFactory<Program>, IAsy
         using IServiceScope scope = Services.CreateScope();
         PeakDbContext context = scope.ServiceProvider.GetRequiredService<PeakDbContext>();
         await context.Database.MigrateAsync();
+
+        _ingestionHost = BuildIngestionHost();
     }
 
     async Task IAsyncLifetime.DisposeAsync()
     {
+        _ingestionHost?.Dispose();
+
         await _postgres.DisposeAsync();
         await _rabbitMq.DisposeAsync();
         await base.DisposeAsync();
     }
+
+    private IHost BuildIngestionHost()
+    {
+        HostApplicationBuilder builder = Host.CreateApplicationBuilder();
+
+        builder.Configuration.AddInMemoryCollection(SharedSettings());
+
+        builder.Services.AddApplication(typeof(RunPeakIngestionCommand).Assembly);
+        builder.Services.AddInfrastructure(builder.Configuration);
+        builder.Services.AddIngestion(builder.Configuration);
+
+        builder.Services.RemoveAll<IPeakSourceClient>();
+        builder.Services.AddSingleton<IPeakSourceClient>(PeakSource);
+
+        return builder.Build();
+    }
+
+    private Dictionary<string, string?> SharedSettings() => new()
+    {
+        ["ConnectionStrings:PeakDatabase"] = _postgres.GetConnectionString(),
+        ["Messaging:Host"] = _rabbitMq.Hostname,
+        ["Messaging:Port"] = _rabbitMq.GetMappedPublicPort(5672).ToString(CultureInfo.InvariantCulture),
+        ["Messaging:Username"] = "peaker",
+        ["Messaging:Password"] = "peaker",
+        ["Messaging:VirtualHost"] = "/",
+        ["Outbox:PollingInterval"] = "00:00:01",
+        ["Ingestion:Endpoint"] = "https://query.wikidata.org/sparql",
+        ["Ingestion:UserAgent"] = "PeakerIngestionTests/1.0 (tests)"
+    };
 }

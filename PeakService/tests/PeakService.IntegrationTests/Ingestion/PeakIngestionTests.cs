@@ -6,10 +6,10 @@ using MediatR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using PeakService.Application.Abstractions;
-using PeakService.Application.Ingestion.RunPeakIngestion;
 using PeakService.Application.Peaks.ListPeaks;
 using PeakService.Domain.PeakIngestionRuns;
 using PeakService.Domain.Peaks;
+using PeakService.Ingestion.RunPeakIngestion;
 using PeakService.IntegrationTests.TestData;
 using Xunit;
 
@@ -162,6 +162,36 @@ public sealed class PeakIngestionTests(PeakServiceApiFactory factory)
     }
 
     [Fact]
+    public async Task Ingestion_WithAFailedPartition_AuditsTheRunAsPartial()
+    {
+        await factory.ResetAsync();
+        factory.PeakSource.ReturnsPartitions(
+            PeakSourcePartition.Loaded([SourceRecords.Valid("Q192580", "Aneto", 3404, 42.6316, 0.6577)]),
+            PeakSourcePartition.Failed("Band [3000, 3250) could not be loaded. HTTP 504"));
+
+        PeakIngestionRunResponse response = await RunAsync();
+
+        PeakIngestionRun stored = await factory.QueryAsync(context =>
+            context.PeakIngestionRuns.SingleAsync(run => run.Id == response.RunId));
+        stored.Status.Should().Be(IngestionStatus.Partial);
+        stored.PeaksCreated.Should().Be(1);
+        stored.Error.Should().Contain("[3000, 3250)");
+    }
+
+    [Fact]
+    public async Task Ingestion_AfterAPartialRun_StillRequestsTheWholeCatalogue()
+    {
+        await factory.ResetAsync();
+        factory.PeakSource.ReturnsPartitions(PeakSourcePartition.Failed("Band [0, 250) could not be loaded."));
+        await RunAsync();
+
+        factory.PeakSource.Returns();
+        await RunAsync();
+
+        factory.PeakSource.LastCursor!.IsIncremental.Should().BeFalse();
+    }
+
+    [Fact]
     public async Task Ingestion_WithNewPeak_WritesTheIntegrationEventToTheOutbox()
     {
         await factory.ResetAsync();
@@ -300,7 +330,7 @@ public sealed class PeakIngestionTests(PeakServiceApiFactory factory)
 
     private async Task<PeakIngestionRunResponse> RunAsync(IngestionMode mode = IngestionMode.Automatic)
     {
-        await using AsyncServiceScope scope = factory.Services.CreateAsyncScope();
+        await using AsyncServiceScope scope = factory.IngestionServices.CreateAsyncScope();
         ISender sender = scope.ServiceProvider.GetRequiredService<ISender>();
 
         Result<PeakIngestionRunResponse> result = await sender.Send(new RunPeakIngestionCommand(mode));

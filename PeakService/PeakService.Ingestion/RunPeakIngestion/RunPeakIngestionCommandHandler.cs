@@ -1,12 +1,11 @@
 using Common.Application.Abstractions;
 using Common.Application.Messaging;
 using Common.Domain.Results;
-using Microsoft.Extensions.Logging;
 using PeakService.Application.Abstractions;
 using PeakService.Domain.PeakIngestionRuns;
 using PeakService.Domain.Peaks;
 
-namespace PeakService.Application.Ingestion.RunPeakIngestion;
+namespace PeakService.Ingestion.RunPeakIngestion;
 
 internal sealed class RunPeakIngestionCommandHandler(
     IPeakSourceClient sourceClient,
@@ -57,12 +56,11 @@ internal sealed class RunPeakIngestionCommandHandler(
 #pragma warning disable CA1031 // Motivo: un fallo de la fuente externa queda auditado en la ejecución en lugar de propagarse.
         try
         {
-            await foreach (PeakSourceRecord record in sourceClient.StreamAsync(cursor, cancellationToken))
-            {
-                await ProcessAsync(record, run, cancellationToken);
-            }
+            IReadOnlyList<string> failures = await ConsumeAsync(run, cursor, cancellationToken);
 
-            _ = run.Complete(dateTimeProvider.UtcNow);
+            _ = failures.Count == 0
+                ? run.Complete(dateTimeProvider.UtcNow)
+                : run.CompletePartially(string.Join(" | ", failures), dateTimeProvider.UtcNow);
         }
         catch (Exception exception) when (exception is not OperationCanceledException)
         {
@@ -72,6 +70,31 @@ internal sealed class RunPeakIngestionCommandHandler(
 #pragma warning restore CA1031
 
         await unitOfWork.SaveChangesAsync(cancellationToken);
+    }
+
+    private async Task<IReadOnlyList<string>> ConsumeAsync(
+        PeakIngestionRun run,
+        PeakSourceCursor cursor,
+        CancellationToken cancellationToken)
+    {
+        List<string> failures = [];
+
+        await foreach (PeakSourcePartition partition in sourceClient.StreamAsync(cursor, cancellationToken))
+        {
+            if (partition.FailureReason is { } reason)
+            {
+                logger.LogWarning("Peak ingestion run {RunId} skipped a partition: {Reason}", run.Id, reason);
+                failures.Add(reason);
+                continue;
+            }
+
+            foreach (PeakSourceRecord record in partition.Records)
+            {
+                await ProcessAsync(record, run, cancellationToken);
+            }
+        }
+
+        return failures;
     }
 
     private async Task ProcessAsync(

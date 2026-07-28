@@ -3,7 +3,6 @@ using Common.API.Results;
 using Common.Application.Pagination;
 using Common.Domain.Results;
 using MediatR;
-using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 using PeakService.API.Requests;
 using PeakService.Application.Peaks.GetPeakById;

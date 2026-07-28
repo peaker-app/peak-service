@@ -72,8 +72,8 @@ public static class DependencyInjection
         services.AddHttpClient<IPeakSourceClient, WikidataPeakSourceClient>(ConfigureSourceClient)
             .AddStandardResilienceHandler(resilience =>
             {
-                resilience.AttemptTimeout.Timeout = TimeSpan.FromMinutes(2);
-                resilience.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(4);
+                resilience.AttemptTimeout.Timeout = TimeSpan.FromSeconds(90);
+                resilience.CircuitBreaker.SamplingDuration = TimeSpan.FromMinutes(3);
                 resilience.TotalRequestTimeout.Timeout = TimeSpan.FromMinutes(6);
             });
 

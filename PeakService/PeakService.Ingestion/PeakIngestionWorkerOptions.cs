@@ -1,4 +1,4 @@
-using PeakService.Application.Ingestion.RunPeakIngestion;
+using PeakService.Ingestion.RunPeakIngestion;
 
 namespace PeakService.Ingestion;
 

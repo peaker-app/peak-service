@@ -1,6 +1,6 @@
 using FluentValidation;
 
-namespace PeakService.Application.Ingestion.RunPeakIngestion;
+namespace PeakService.Ingestion.RunPeakIngestion;
 
 internal sealed class RunPeakIngestionCommandValidator : AbstractValidator<RunPeakIngestionCommand>
 {

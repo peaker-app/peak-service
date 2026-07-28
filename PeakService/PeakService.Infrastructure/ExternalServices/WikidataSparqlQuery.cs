@@ -1,59 +1,78 @@
-using System.Globalization;
 using System.Text.RegularExpressions;
+using PeakService.Application.Abstractions;
 
 namespace PeakService.Infrastructure.ExternalServices;
 
 internal static partial class WikidataSparqlQuery
 {
-    public const string NameSeparator = "||";
-    public const char NameFieldSeparator = '~';
-
-    private const string Template =
+    private const string Prefixes =
         """
-        SELECT ?item ?itemLabel ?elevation ?coord ?countryCode ?adminLabel ?modified
-               (GROUP_CONCAT(DISTINCT ?nameEntry; separator="{NAME_SEPARATOR}") AS ?names) WHERE {
-          ?item wdt:P31/wdt:P279* wd:Q8502.
-          ?item wdt:P2044 ?elevation.
-          ?item wdt:P625 ?coord.
-          ?item schema:dateModified ?modified.
-          OPTIONAL { ?item wdt:P17 ?country. ?country wdt:P297 ?countryCode. }
-          OPTIONAL { ?item wdt:P131 ?admin. }
-          OPTIONAL {
-            { ?item rdfs:label ?name. BIND("1" AS ?official) }
-            UNION
-            { ?item skos:altLabel ?name. BIND("0" AS ?official) }
-            FILTER(LANG(?name) IN ({LANGUAGES}))
-            BIND(CONCAT(LANG(?name), "{FIELD_SEPARATOR}", ?official, "{FIELD_SEPARATOR}", STR(?name)) AS ?nameEntry)
-          }
-          {FILTER}
-          SERVICE wikibase:label { bd:serviceParam wikibase:language "{LANGUAGE}",en. }
-        }
-        GROUP BY ?item ?itemLabel ?elevation ?coord ?countryCode ?adminLabel ?modified
-        ORDER BY ?item
-        LIMIT {LIMIT}
-        OFFSET {OFFSET}
+        PREFIX wd: <http://www.wikidata.org/entity/>
+        PREFIX wdt: <http://www.wikidata.org/prop/direct/>
+        PREFIX wikibase: <http://wikiba.se/ontology#>
+        PREFIX bd: <http://www.bigdata.com/rdf#>
+        PREFIX schema: <http://schema.org/>
+        PREFIX rdfs: <http://www.w3.org/2000/01/rdf-schema#>
+        PREFIX skos: <http://www.w3.org/2004/02/skos/core#>
+        PREFIX xsd: <http://www.w3.org/2001/XMLSchema#>
         """;
 
-    public static string Build(IngestionOptions options, DateTime? modifiedSinceUtc, SparqlPage page) =>
-        Template
-            .Replace("{NAME_SEPARATOR}", NameSeparator, StringComparison.Ordinal)
-            .Replace("{FIELD_SEPARATOR}", NameFieldSeparator.ToString(), StringComparison.Ordinal)
-            .Replace("{LANGUAGES}", BuildLanguageList(options.AlternativeNameLanguages), StringComparison.Ordinal)
-            .Replace("{FILTER}", BuildFilter(modifiedSinceUtc), StringComparison.Ordinal)
-            .Replace("{LANGUAGE}", options.Language, StringComparison.Ordinal)
-            .Replace("{LIMIT}", page.Take.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
-            .Replace("{OFFSET}", page.Offset.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+    private const string CatalogTemplate =
+        """
+        SELECT ?item ?itemLabel ?elevation ?coord ?countryCode ?adminLabel ?modified WHERE {
+          ?item wdt:P31/wdt:P279* wd:Q8502 ;
+                wdt:P2044 ?elevation ;
+                wdt:P625 ?coord ;
+                schema:dateModified ?modified .
+          {BAND_FILTER}
+          {MODIFIED_FILTER}
+          OPTIONAL { ?item wdt:P17 ?country . ?country wdt:P297 ?countryCode . }
+          OPTIONAL { ?item wdt:P131 ?admin . }
+          SERVICE <http://wikiba.se/ontology#label> { bd:serviceParam wikibase:language "{LANGUAGE},en". }
+        }
+        """;
+
+    private const string NamesTemplate =
+        """
+        SELECT ?item ?name ?official WHERE {
+          VALUES ?item { {ITEMS} }
+          { ?item rdfs:label ?name . BIND("1" AS ?official) }
+          UNION
+          { ?item skos:altLabel ?name . BIND("0" AS ?official) }
+          FILTER(LANG(?name) IN ({LANGUAGES}))
+        }
+        """;
+
+    public static string BuildCatalog(IngestionOptions options, PeakSourceCursor cursor, ElevationBand band) =>
+        Compose(CatalogTemplate
+            .Replace("{BAND_FILTER}", band.FilterClause(), StringComparison.Ordinal)
+            .Replace("{MODIFIED_FILTER}", BuildModifiedFilter(cursor.ModifiedSinceUtc), StringComparison.Ordinal)
+            .Replace("{LANGUAGE}", options.Language, StringComparison.Ordinal));
+
+    public static string BuildNames(IngestionOptions options, IEnumerable<string> wikidataIds) =>
+        Compose(NamesTemplate
+            .Replace("{ITEMS}", BuildItemList(wikidataIds), StringComparison.Ordinal)
+            .Replace("{LANGUAGES}", BuildLanguageList(options.AlternativeNameLanguages), StringComparison.Ordinal));
+
+    public static IEnumerable<string> ValidLanguages(IEnumerable<string> languages) =>
+        languages.Where(language => LanguageTag().IsMatch(language));
+
+    private static string Compose(string body) => $"{Prefixes}\n{body}";
+
+    private static string BuildItemList(IEnumerable<string> wikidataIds) =>
+        string.Join(' ', wikidataIds.Where(id => EntityId().IsMatch(id)).Select(id => $"wd:{id}"));
 
     private static string BuildLanguageList(IEnumerable<string> languages) =>
-        string.Join(",", languages.Where(IsLanguageTag).Select(language => $"\"{language}\""));
+        string.Join(',', ValidLanguages(languages).Select(language => $"\"{language}\""));
 
-    private static bool IsLanguageTag(string language) => LanguageTag().IsMatch(language);
-
-    private static string BuildFilter(DateTime? modifiedSinceUtc) =>
+    private static string BuildModifiedFilter(DateTime? modifiedSinceUtc) =>
         modifiedSinceUtc is null
             ? string.Empty
             : $"""FILTER(?modified >= "{modifiedSinceUtc.Value:yyyy-MM-ddTHH:mm:ssZ}"^^xsd:dateTime)""";
 
     [GeneratedRegex("^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})?$")]
     private static partial Regex LanguageTag();
+
+    [GeneratedRegex("^Q[1-9][0-9]*$")]
+    private static partial Regex EntityId();
 }

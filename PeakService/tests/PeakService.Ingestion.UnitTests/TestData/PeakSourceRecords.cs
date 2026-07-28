@@ -1,6 +1,6 @@
 using PeakService.Application.Abstractions;
 
-namespace PeakService.Application.UnitTests.TestData;
+namespace PeakService.Ingestion.UnitTests.TestData;
 
 internal static class PeakSourceRecords
 {

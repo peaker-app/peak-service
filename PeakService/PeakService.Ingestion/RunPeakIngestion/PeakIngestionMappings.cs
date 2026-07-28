@@ -3,7 +3,7 @@ using PeakService.Application.Abstractions;
 using PeakService.Domain.PeakIngestionRuns;
 using PeakService.Domain.Peaks;
 
-namespace PeakService.Application.Ingestion.RunPeakIngestion;
+namespace PeakService.Ingestion.RunPeakIngestion;
 
 internal static class PeakIngestionMappings
 {
