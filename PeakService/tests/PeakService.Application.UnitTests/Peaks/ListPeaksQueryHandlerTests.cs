@@ -20,7 +20,7 @@ public sealed class ListPeaksQueryHandlerTests
     [Fact]
     public async Task Handle_WithValidRequest_ReturnsPagedResultFromReader()
     {
-        var expected = new PagedResult<PeakListItemResponse>([], 1, 20, 0);
+        PagedResult<PeakListItemResponse> expected = new([], 1, 20, 0);
         _reader.ListAsync(Arg.Any<PeakFilter>(), Arg.Any<PageRequest>(), Arg.Any<CancellationToken>())
             .Returns(expected);
 
@@ -53,7 +53,7 @@ public sealed class ListPeaksQueryHandlerTests
     [Fact]
     public async Task Handle_WithInvertedAltitudeRange_ReturnsAltitudeRangeInvalid()
     {
-        var filter = new PeakFilter(null, null, MinAltitudeMeters: 3000, MaxAltitudeMeters: 1000);
+        PeakFilter filter = new(null, null, MinAltitudeMeters: 3000, MaxAltitudeMeters: 1000);
 
         Result<PagedResult<PeakListItemResponse>> result = await _handler.Handle(
             new ListPeaksQuery(filter, new PageRequest(1, 20)), CancellationToken.None);

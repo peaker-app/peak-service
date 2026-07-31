@@ -19,7 +19,7 @@ public sealed class NearbyPeaksQueryHandlerTests
     [Fact]
     public async Task Handle_WithValidRequest_DelegatesToReader()
     {
-        var expected = new PagedResult<NearbyPeakResponse>([], 1, 20, 0);
+        PagedResult<NearbyPeakResponse> expected = new([], 1, 20, 0);
         _reader.NearbyAsync(Arg.Any<Coordinates>(), 5000, Arg.Any<PageRequest>(), Arg.Any<CancellationToken>())
             .Returns(expected);
 

@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Text.Json;
 using Polly.CircuitBreaker;
 using Polly.Timeout;
 
@@ -38,9 +39,12 @@ internal sealed class SparqlEndpoint(HttpClient httpClient)
         return SparqlOutcome.Succeeded(payload?.Results?.Bindings ?? []);
     }
 
+    // Motivo: WDQS puede agotar su límite de 60 s después de enviar las cabeceras, cortando el JSON
+    // con un 200 ya emitido; ese fallo llega como JsonException o IOException, no como 5xx.
     private static bool IsTransient(Exception exception, CancellationToken cancellationToken) =>
         !cancellationToken.IsCancellationRequested
-        && exception is HttpRequestException or TimeoutRejectedException or BrokenCircuitException or TaskCanceledException;
+        && exception is HttpRequestException or TimeoutRejectedException or BrokenCircuitException
+            or TaskCanceledException or JsonException or IOException;
 
     private static bool IsRetriableStatus(HttpStatusCode statusCode) =>
         statusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout

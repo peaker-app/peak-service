@@ -77,6 +77,12 @@ public sealed class WikidataPeakSourceClientTests
 
     private const string NoPeaks = """{"results":{"bindings":[]}}""";
 
+    private const string TruncatedStream =
+        "{\"results\":{\"bindings\":[\n" +
+        "  {\"item\":{\"value\":\"http://www.wikidata.org/entity/Q192580\"},\n" +
+        "   \"itemLabel\":{\"value\":\"Aneto\"},\"elevation\":{\"value\":\"3404\"},\n" +
+        "   \"coord\":{\"datatype\":\"http://www.opengis.net/ont/geosparql#wktLi\n";
+
     [Fact]
     public async Task StreamAsync_MapsEveryFieldOfTheSparqlBinding()
     {
@@ -181,6 +187,51 @@ public sealed class WikidataPeakSourceClientTests
 
         partitions.Should().ContainSingle(partition => partition.IsFailed)
             .Which.FailureReason.Should().Contain("504");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithATruncatedStream_DoesNotPropagateTheParsingFailure()
+    {
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(TruncatedStream));
+
+        Func<Task> streaming = () => PartitionsAsync(handler, Settings(bandMeters: 9000, minBandMeters: 9000));
+
+        await streaming.Should().NotThrowAsync();
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithATruncatedStream_SplitsTheBandInsteadOfFailingTheRun()
+    {
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(TruncatedStream),
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(OnePeak),
+            StubbedResponse.Ok(NoNames));
+
+        List<PeakSourcePartition> partitions = await PartitionsAsync(handler, Settings(bandMeters: 9000));
+
+        partitions.Should().NotContain(partition => partition.IsFailed);
+        partitions.SelectMany(partition => partition.Records).Should().ContainSingle();
+        handler.ReceivedQueries[2].Should().Contain("%3C+4500");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithATruncatedStreamInBothPasses_ReportsOneFailedPartition()
+    {
+        StubHttpMessageHandler handler = new(
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(TruncatedStream),
+            StubbedResponse.Ok(NoPeaks),
+            StubbedResponse.Ok(TruncatedStream));
+
+        List<PeakSourcePartition> partitions = await PartitionsAsync(
+            handler, Settings(bandMeters: 9000, minBandMeters: 9000));
+
+        partitions.Should().ContainSingle(partition => partition.IsFailed)
+            .Which.FailureReason.Should().Contain("JsonException");
     }
 
     [Fact]

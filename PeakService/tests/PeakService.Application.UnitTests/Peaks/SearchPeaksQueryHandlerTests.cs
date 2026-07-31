@@ -21,7 +21,7 @@ public sealed class SearchPeaksQueryHandlerTests
     [Fact]
     public async Task Handle_WithValidRequest_DelegatesToReader()
     {
-        var expected = new PagedResult<PeakListItemResponse>([], 1, 20, 0);
+        PagedResult<PeakListItemResponse> expected = new([], 1, 20, 0);
         _reader.SearchAsync("aneto", Arg.Any<PeakFilter>(), Arg.Any<PageRequest>(), Arg.Any<CancellationToken>())
             .Returns(expected);
 
@@ -44,7 +44,7 @@ public sealed class SearchPeaksQueryHandlerTests
     [Fact]
     public async Task Handle_WithMalformedCountryFilter_ReturnsCountryCodeInvalid()
     {
-        var filter = new PeakFilter(CountryCode: "ESP", null, null, null);
+        PeakFilter filter = new(CountryCode: "ESP", null, null, null);
 
         Result<PagedResult<PeakListItemResponse>> result = await _handler.Handle(
             new SearchPeaksQuery("aneto", filter, new PageRequest(1, 20)), CancellationToken.None);

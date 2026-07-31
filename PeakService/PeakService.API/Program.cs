@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using Common.API.Documentation;
 using Common.API.Health;
 using Common.API.Middlewares;
 using Common.Infrastructure.Observability;
@@ -19,8 +20,7 @@ builder.Services.AddEventPublishing(builder.Configuration);
 builder.Services.AddControllers()
     .AddJsonOptions(options =>
         options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
-builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddCommonSwagger("peak-service");
 
 builder.Services.AddHealthChecks().AddDbContextCheck<PeakDbContext>();
 
@@ -40,5 +40,3 @@ app.MapControllers();
 app.MapCommonHealthChecks();
 
 await app.RunAsync();
-
-public partial class Program;

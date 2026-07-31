@@ -11,6 +11,7 @@ internal sealed class PeakConfiguration : EntityConfiguration<Peak>
 {
     private const int CountryCodeLength = 2;
     private const string Wgs84GeographyPoint = "geography (Point,4326)";
+    private const string PeakIdColumn = "peak_id";
 
     public override void Configure(EntityTypeBuilder<Peak> builder)
     {
@@ -76,17 +77,17 @@ internal sealed class PeakConfiguration : EntityConfiguration<Peak>
         builder.OwnsMany(peak => peak.AlternativeNames, name =>
         {
             name.ToTable("peak_names");
-            name.WithOwner().HasForeignKey("peak_id");
+            name.WithOwner().HasForeignKey(PeakIdColumn);
             name.HasKey(entity => entity.Id);
             name.Property(entity => entity.Id).HasColumnName("id").ValueGeneratedNever();
-            name.Property<Guid>("peak_id").HasColumnName("peak_id");
+            name.Property<Guid>(PeakIdColumn).HasColumnName(PeakIdColumn);
             name.Property(entity => entity.LanguageCode)
                 .HasColumnName("language_code").HasMaxLength(PeakName.MaxLanguageCodeLength).IsRequired();
             name.Property(entity => entity.Name)
                 .HasColumnName("name").HasMaxLength(PeakName.MaxNameLength).IsRequired();
             name.Property(entity => entity.IsOfficial).HasColumnName("is_official").IsRequired();
-            name.HasIndex("peak_id", nameof(PeakName.LanguageCode), nameof(PeakName.Name))
+            name.HasIndex(PeakIdColumn, nameof(PeakName.LanguageCode), nameof(PeakName.Name))
                 .IsUnique().HasDatabaseName("ux_peak_names_unique");
-            name.HasIndex("peak_id").HasDatabaseName("ix_peak_names_peak");
+            name.HasIndex(PeakIdColumn).HasDatabaseName("ix_peak_names_peak");
         });
 }

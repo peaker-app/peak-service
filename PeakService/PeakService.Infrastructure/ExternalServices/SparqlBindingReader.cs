@@ -6,7 +6,10 @@ namespace PeakService.Infrastructure.ExternalServices;
 
 internal static class SparqlBindingReader
 {
+#pragma warning disable S5332 // Motivo: es el IRI que Wikidata devuelve literalmente en sus bindings;
+    // solo se usa como prefijo para recortar el QID, nunca como endpoint. Con https no casaría nada.
     private const string EntityPrefix = "http://www.wikidata.org/entity/";
+#pragma warning restore S5332
     private const string PointPrefix = "Point(";
 
     public static PeakSourceRecord? ToRecord(Dictionary<string, SparqlBinding> binding)
