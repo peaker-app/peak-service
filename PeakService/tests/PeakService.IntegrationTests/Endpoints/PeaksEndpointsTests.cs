@@ -76,6 +76,35 @@ public sealed class PeaksEndpointsTests(PeakServiceApiFactory factory)
     }
 
     [Fact]
+    public async Task GetById_PeakWithAnImage_ReturnsItsUrl()
+    {
+        await factory.ResetAsync();
+        Peak peak = TestPeaks.Create(
+            "Aneto", 42.63, 0.65, 3404, imageUrl: "https://commons.wikimedia.org/photo.jpg");
+        await factory.SeedAsync(peak);
+
+        HttpResponseMessage response = await factory.CreateClient().GetAsync($"/api/peaks/{peak.Id}");
+
+        PeakDetailResponse? body = await response.ReadAsync<PeakDetailResponse>();
+        body!.ImageUrl.Should().Be("https://commons.wikimedia.org/photo.jpg");
+    }
+
+    [Fact]
+    public async Task List_CarriesTheImageUrlOfEachPeak()
+    {
+        await factory.ResetAsync();
+        await factory.SeedAsync(
+            TestPeaks.Create("Aneto", 42.63, 0.65, 3404, imageUrl: "https://commons.wikimedia.org/photo.jpg"),
+            TestPeaks.Create("Posets", 42.66, 0.42, 3375));
+
+        HttpResponseMessage response = await factory.CreateClient().GetAsync("/api/peaks");
+
+        PagedResponse<PeakListItemResponse>? body = await response.ReadAsync<PagedResponse<PeakListItemResponse>>();
+        body!.Items.Should().ContainSingle(item => item.ImageUrl == "https://commons.wikimedia.org/photo.jpg");
+        body.Items.Should().ContainSingle(item => item.Name == "Posets" && item.ImageUrl == null);
+    }
+
+    [Fact]
     public async Task GetById_MissingPeak_ReturnsNotFound()
     {
         await factory.ResetAsync();

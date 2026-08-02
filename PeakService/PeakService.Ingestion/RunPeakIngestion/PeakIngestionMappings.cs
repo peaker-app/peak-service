@@ -24,7 +24,8 @@ internal static class PeakIngestionMappings
             coordinates.Value,
             record.CountryCode,
             record.Region,
-            record.SourceRevision);
+            record.SourceRevision,
+            record.ImageUrl);
 
         return new IngestedPeak(source, record.AlternativeNames);
     }

@@ -13,9 +13,18 @@ internal static class PeakDrafts
         string? region = "Huesca",
         string? sourceRevision = null,
         Guid? rangeId = null,
-        IReadOnlyList<PeakNameDraft>? alternativeNames = null) =>
+        IReadOnlyList<PeakNameDraft>? alternativeNames = null,
+        string? imageUrl = null) =>
         new(
-            Source(wikidataId, name, altitudeMeters, prominenceMeters, countryCode, region, sourceRevision),
+            Source(
+                wikidataId,
+                name,
+                altitudeMeters,
+                prominenceMeters,
+                countryCode,
+                region,
+                sourceRevision,
+                imageUrl: imageUrl),
             rangeId,
             alternativeNames ?? []);
 
@@ -28,7 +37,8 @@ internal static class PeakDrafts
         string? region = "Huesca",
         string? sourceRevision = null,
         double latitude = 42.6316,
-        double longitude = 0.6577) =>
+        double longitude = 0.6577,
+        string? imageUrl = null) =>
         new(
             wikidataId,
             name,
@@ -37,5 +47,6 @@ internal static class PeakDrafts
             Coordinates.Create(latitude, longitude).Value,
             countryCode,
             region,
-            sourceRevision);
+            sourceRevision,
+            imageUrl);
 }

@@ -103,4 +103,30 @@ public sealed class PeakTests
 
         result.Error.Should().Be(PeakErrors.RegionTooLong);
     }
+
+    [Fact]
+    public void Create_WithAnImage_StoresItsUrl()
+    {
+        Result<Peak> result = Peak.Create(
+            PeakDrafts.Valid(imageUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Aneto.jpg"));
+
+        result.Value.ImageUrl.Should().Be("https://commons.wikimedia.org/wiki/Special:FilePath/Aneto.jpg");
+    }
+
+    [Fact]
+    public void Create_WithoutAnImage_LeavesTheUrlEmpty()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid());
+
+        result.Value.ImageUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public void Create_WithTooLongImageUrl_ReturnsImageUrlTooLong()
+    {
+        Result<Peak> result = Peak.Create(
+            PeakDrafts.Valid(imageUrl: new string('u', Peak.MaxImageUrlLength + 1)));
+
+        result.Error.Should().Be(PeakErrors.ImageUrlTooLong);
+    }
 }

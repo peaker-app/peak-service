@@ -19,7 +19,7 @@ internal static partial class WikidataSparqlQuery
 
     private const string CatalogTemplate =
         """
-        SELECT ?item ?itemLabel ?elevation ?coord ?countryCode ?adminLabel ?modified WHERE {
+        SELECT ?item ?itemLabel ?elevation ?coord ?countryCode ?adminLabel ?image ?modified WHERE {
           ?item wdt:P31/wdt:P279* wd:Q8502 ;
                 wdt:P2044 ?elevation ;
                 wdt:P625 ?coord ;
@@ -28,6 +28,7 @@ internal static partial class WikidataSparqlQuery
           {MODIFIED_FILTER}
           OPTIONAL { ?item wdt:P17 ?country . ?country wdt:P297 ?countryCode . }
           OPTIONAL { ?item wdt:P131 ?admin . }
+          OPTIONAL { ?item wdt:P18 ?image . }
           SERVICE <http://wikiba.se/ontology#label> { bd:serviceParam wikibase:language "{LANGUAGE},en". }
         }
         """;
@@ -60,7 +61,7 @@ internal static partial class WikidataSparqlQuery
     private static string Compose(string body) => $"{Prefixes}\n{body}";
 
     private static string BuildItemList(IEnumerable<string> wikidataIds) =>
-        string.Join(' ', wikidataIds.Where(id => EntityId().IsMatch(id)).Select(id => $"wd:{id}"));
+        string.Join(' ', wikidataIds.Where(WikidataIdentifier.IsIdentifier).Select(id => $"wd:{id}"));
 
     private static string BuildLanguageList(IEnumerable<string> languages) =>
         string.Join(',', ValidLanguages(languages).Select(language => $"\"{language}\""));
@@ -72,7 +73,4 @@ internal static partial class WikidataSparqlQuery
 
     [GeneratedRegex("^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})?$")]
     private static partial Regex LanguageTag();
-
-    [GeneratedRegex("^Q[1-9][0-9]*$")]
-    private static partial Regex EntityId();
 }

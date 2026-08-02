@@ -64,6 +64,49 @@ public sealed class WikidataPeakSourceClientTests
         ]}}
         """;
 
+    private const string UnlabelledPeak =
+        """
+        {"results":{"bindings":[
+          {"item":{"value":"http://www.wikidata.org/entity/Q8538208"},
+           "itemLabel":{"value":"Q8538208"},
+           "elevation":{"value":"438"},
+           "coord":{"value":"Point(-5.84111 43.45361)"},
+           "modified":{"value":"2026-07-01T10:00:00Z"}}
+        ]}}
+        """;
+
+    private const string UnlabelledPeakNames =
+        """
+        {"results":{"bindings":[
+          {"item":{"value":"http://www.wikidata.org/entity/Q8538208"},
+           "name":{"value":"Santo Firme","xml:lang":"es"},"official":{"value":"1"}},
+          {"item":{"value":"http://www.wikidata.org/entity/Q8538208"},
+           "name":{"value":"Picu Santu Firme","xml:lang":"ast"},"official":{"value":"0"}}
+        ]}}
+        """;
+
+    private const string UnlabelledPeakEnglishNames =
+        """
+        {"results":{"bindings":[
+          {"item":{"value":"http://www.wikidata.org/entity/Q8538208"},
+           "name":{"value":"Santo Firme","xml:lang":"es"},"official":{"value":"1"}},
+          {"item":{"value":"http://www.wikidata.org/entity/Q8538208"},
+           "name":{"value":"Holy Firme","xml:lang":"en"},"official":{"value":"1"}}
+        ]}}
+        """;
+
+    private const string PeakWithPhoto =
+        """
+        {"results":{"bindings":[
+          {"item":{"value":"http://www.wikidata.org/entity/Q192580"},
+           "itemLabel":{"value":"Aneto"},
+           "elevation":{"value":"3404"},
+           "coord":{"value":"Point(0.6577 42.6316)"},
+           "image":{"value":"http://commons.wikimedia.org/wiki/Special:FilePath/Aneto%20south.jpg"},
+           "modified":{"value":"2026-07-01T10:00:00Z"}}
+        ]}}
+        """;
+
     private const string PeakWithoutCoordinates =
         """
         {"results":{"bindings":[
@@ -129,6 +172,81 @@ public sealed class WikidataPeakSourceClientTests
             StubHttpMessageHandler.WithBodies(Matterhorn, MatterhornNames));
 
         records.Single().AlternativeNames.Should().NotContain(name => name.Name == "Matterhorn");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WhenTheLabelIsTheWikidataId_PromotesAnAlternativeNameAsCanonical()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(UnlabelledPeak, UnlabelledPeakNames));
+
+        records.Single().Name.Should().Be("Santo Firme");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WhenTheLabelIsTheWikidataId_DoesNotRepeatThePromotedNameAsAnAlternativeOne()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(UnlabelledPeak, UnlabelledPeakNames));
+
+        records.Single().AlternativeNames.Should().BeEquivalentTo(
+            [new PeakNameDraft("ast", "Picu Santu Firme", false)]);
+    }
+
+    [Fact]
+    public async Task StreamAsync_WhenTheLabelIsTheWikidataId_PrefersTheCanonicalLanguage()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(UnlabelledPeak, UnlabelledPeakEnglishNames));
+
+        records.Single().Name.Should().Be("Holy Firme");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WhenTheLabelIsTheWikidataIdAndNoNameExists_KeepsTheIdentifier()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(UnlabelledPeak, NoNames));
+
+        records.Single().Name.Should().Be("Q8538208");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithARealLabel_LeavesTheCanonicalNameUntouched()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(Matterhorn, MatterhornNames));
+
+        records.Single().Name.Should().Be("Matterhorn");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithAnImage_KeepsTheCommonsUrlOverHttps()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(PeakWithPhoto, NoNames));
+
+        records.Single().ImageUrl.Should()
+            .Be("https://commons.wikimedia.org/wiki/Special:FilePath/Aneto%20south.jpg");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithoutAnImage_LeavesTheUrlEmpty()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(OnePeak, NoNames));
+
+        records.Single().ImageUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task StreamAsync_AsksWikidataForTheDepictedImage()
+    {
+        StubHttpMessageHandler handler = StubHttpMessageHandler.WithBodies(OnePeak, NoNames);
+
+        await PartitionsAsync(handler, Settings(bandMeters: 9000));
+
+        handler.ReceivedQueries[0].Should().Contain("wdt%3AP18");
     }
 
     [Fact]

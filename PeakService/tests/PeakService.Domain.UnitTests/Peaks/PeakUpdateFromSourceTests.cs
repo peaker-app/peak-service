@@ -166,6 +166,41 @@ public sealed class PeakUpdateFromSourceTests
     }
 
     [Fact]
+    public void UpdateFromSource_WithANewImage_ReturnsUpdatedAndStoresTheUrl()
+    {
+        Peak peak = Existing();
+
+        Result<PeakUpdateOutcome> result = peak.UpdateFromSource(
+            PeakDrafts.Source(imageUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Aneto.jpg"), []);
+
+        result.Value.Should().Be(PeakUpdateOutcome.Updated);
+        peak.ImageUrl.Should().Be("https://commons.wikimedia.org/wiki/Special:FilePath/Aneto.jpg");
+    }
+
+    [Fact]
+    public void UpdateFromSource_WithTheSameImage_ReturnsUnchanged()
+    {
+        Peak peak = Peak.Create(PeakDrafts.Valid(imageUrl: "https://commons.wikimedia.org/photo.jpg")).Value;
+        peak.ClearDomainEvents();
+
+        Result<PeakUpdateOutcome> result = peak.UpdateFromSource(
+            PeakDrafts.Source(imageUrl: "https://commons.wikimedia.org/photo.jpg"), []);
+
+        result.Value.Should().Be(PeakUpdateOutcome.Unchanged);
+    }
+
+    [Fact]
+    public void UpdateFromSource_WithTooLongImageUrl_ReturnsImageUrlTooLong()
+    {
+        Peak peak = Existing();
+
+        Result<PeakUpdateOutcome> result = peak.UpdateFromSource(
+            PeakDrafts.Source(imageUrl: new string('u', Peak.MaxImageUrlLength + 1)), []);
+
+        result.Error.Should().Be(PeakErrors.ImageUrlTooLong);
+    }
+
+    [Fact]
     public void UpdateFromSource_WithInvalidData_LeavesThePeakUntouched()
     {
         Peak peak = Existing([Cervino]);

@@ -30,6 +30,20 @@ public sealed class SearchEndpointTests(PeakServiceApiFactory factory)
     }
 
     [Fact]
+    public async Task Search_CarriesTheImageUrl()
+    {
+        await factory.ResetAsync();
+        await factory.SeedAsync(TestPeaks.Create(
+            "Aneto", 42.63, 0.65, 3404, imageUrl: "https://commons.wikimedia.org/photo.jpg"));
+
+        HttpResponseMessage response = await factory.CreateClient().GetAsync("/api/peaks/search?q=aneto");
+
+        PagedResponse<PeakListItemResponse>? body = await response.ReadAsync<PagedResponse<PeakListItemResponse>>();
+        body!.Items.Should().ContainSingle()
+            .Which.ImageUrl.Should().Be("https://commons.wikimedia.org/photo.jpg");
+    }
+
+    [Fact]
     public async Task Search_MatchesAlternativeNamesInAnyLanguage()
     {
         await factory.ResetAsync();

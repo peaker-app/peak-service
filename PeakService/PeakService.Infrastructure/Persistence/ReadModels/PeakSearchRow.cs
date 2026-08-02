@@ -9,4 +9,5 @@ internal sealed record PeakSearchRow(
     double Longitude,
     string? CountryCode,
     string? Region,
+    string? ImageUrl,
     long TotalCount);

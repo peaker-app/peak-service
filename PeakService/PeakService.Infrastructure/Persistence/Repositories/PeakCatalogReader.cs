@@ -23,6 +23,7 @@ internal sealed class PeakCatalogReader(PeakDbContext context) : IPeakCatalogRea
                ST_X(p.location::geometry) AS "Longitude",
                p.country_code AS "CountryCode",
                p.region AS "Region",
+               p.image_url AS "ImageUrl",
                count(*) OVER() AS "TotalCount"
         FROM peaks p, plainto_tsquery('simple', immutable_unaccent(@q)) AS q(query)
         WHERE (p.search_vector @@ q.query
@@ -49,6 +50,7 @@ internal sealed class PeakCatalogReader(PeakDbContext context) : IPeakCatalogRea
                ST_X(p.location::geometry) AS "Longitude",
                p.country_code AS "CountryCode",
                p.region AS "Region",
+               p.image_url AS "ImageUrl",
                ST_Distance(p.location, origin.g) AS "DistanceMeters",
                count(*) OVER() AS "TotalCount"
         FROM peaks p, origin
@@ -164,7 +166,8 @@ internal sealed class PeakCatalogReader(PeakDbContext context) : IPeakCatalogRea
         peak.Coordinates.Latitude,
         peak.Coordinates.Longitude,
         peak.CountryCode,
-        peak.Region);
+        peak.Region,
+        peak.ImageUrl);
 
     private static PeakListItemResponse ToListItem(PeakSearchRow row) => new(
         row.Id,
@@ -174,7 +177,8 @@ internal sealed class PeakCatalogReader(PeakDbContext context) : IPeakCatalogRea
         row.Latitude,
         row.Longitude,
         row.CountryCode,
-        row.Region);
+        row.Region,
+        row.ImageUrl);
 
     private static NearbyPeakResponse ToNearby(PeakNearbyRow row) => new(
         row.Id,
@@ -184,5 +188,6 @@ internal sealed class PeakCatalogReader(PeakDbContext context) : IPeakCatalogRea
         row.Longitude,
         row.CountryCode,
         row.Region,
+        row.ImageUrl,
         row.DistanceMeters);
 }

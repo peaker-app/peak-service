@@ -30,6 +30,21 @@ public sealed class NearbyEndpointTests(PeakServiceApiFactory factory)
     }
 
     [Fact]
+    public async Task Nearby_CarriesTheImageUrl()
+    {
+        await factory.ResetAsync();
+        await factory.SeedAsync(
+            TestPeaks.Create("Near", 42.64, 0.66, imageUrl: "https://commons.wikimedia.org/photo.jpg"));
+
+        HttpResponseMessage response = await factory.CreateClient()
+            .GetAsync("/api/peaks/nearby?lat=42.63&lon=0.65&radius=50000");
+
+        PagedResponse<NearbyPeakResponse>? body = await response.ReadAsync<PagedResponse<NearbyPeakResponse>>();
+        body!.Items.Should().ContainSingle()
+            .Which.ImageUrl.Should().Be("https://commons.wikimedia.org/photo.jpg");
+    }
+
+    [Fact]
     public async Task Nearby_WithRadiusAboveMaximum_ReturnsBadRequest()
     {
         await factory.ResetAsync();

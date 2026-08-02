@@ -10,6 +10,7 @@ public sealed class Peak : AggregateRoot
     public const int MaxNameLength = 200;
     public const int MaxRegionLength = 120;
     public const int MaxSourceRevisionLength = 50;
+    public const int MaxImageUrlLength = 500;
 
     private readonly List<PeakName> _alternativeNames = [];
 
@@ -38,6 +39,8 @@ public sealed class Peak : AggregateRoot
     public string? Region { get; private set; }
 
     public string? SourceRevision { get; private set; }
+
+    public string? ImageUrl { get; private set; }
 
     public Guid? RangeId { get; private set; }
 
@@ -131,8 +134,13 @@ public sealed class Peak : AggregateRoot
             return Result.Failure(PeakErrors.RegionTooLong);
         }
 
-        return source.SourceRevision is { Length: > MaxSourceRevisionLength }
-            ? Result.Failure(PeakErrors.SourceRevisionTooLong)
+        if (source.SourceRevision is { Length: > MaxSourceRevisionLength })
+        {
+            return Result.Failure(PeakErrors.SourceRevisionTooLong);
+        }
+
+        return source.ImageUrl is { Length: > MaxImageUrlLength }
+            ? Result.Failure(PeakErrors.ImageUrlTooLong)
             : Result.Success();
     }
 
@@ -143,7 +151,8 @@ public sealed class Peak : AggregateRoot
         || !Coordinates.Equals(source.Coordinates)
         || !string.Equals(CountryCode, source.CountryCode, StringComparison.Ordinal)
         || !string.Equals(Region, source.Region, StringComparison.Ordinal)
-        || !string.Equals(SourceRevision, source.SourceRevision, StringComparison.Ordinal);
+        || !string.Equals(SourceRevision, source.SourceRevision, StringComparison.Ordinal)
+        || !string.Equals(ImageUrl, source.ImageUrl, StringComparison.Ordinal);
 
     private void Apply(PeakSourceData source)
     {
@@ -155,5 +164,6 @@ public sealed class Peak : AggregateRoot
         CountryCode = source.CountryCode;
         Region = source.Region;
         SourceRevision = source.SourceRevision;
+        ImageUrl = source.ImageUrl;
     }
 }

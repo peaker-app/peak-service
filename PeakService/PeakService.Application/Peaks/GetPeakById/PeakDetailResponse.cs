@@ -9,6 +9,7 @@ public sealed record PeakDetailResponse(
     double Longitude,
     string? CountryCode,
     string? Region,
+    string? ImageUrl,
     Guid? RangeId,
     string? RangeName,
     IReadOnlyList<PeakNameResponse> AlternativeNames);

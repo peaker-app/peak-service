@@ -12,7 +12,8 @@ internal static class TestPeaks
         string? countryCode = "ES",
         string? region = "Huesca",
         Guid? rangeId = null,
-        IReadOnlyList<PeakNameDraft>? alternativeNames = null) =>
+        IReadOnlyList<PeakNameDraft>? alternativeNames = null,
+        string? imageUrl = null) =>
         Peak.Create(new PeakDraft(
             new PeakSourceData(
                 NewWikidataId(),
@@ -22,7 +23,8 @@ internal static class TestPeaks
                 Coordinates.Create(latitude, longitude).Value,
                 countryCode,
                 region,
-                SourceRevision: null),
+                SourceRevision: null,
+                imageUrl),
             rangeId,
             alternativeNames ?? [])).Value;
 

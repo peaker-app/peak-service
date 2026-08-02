@@ -48,6 +48,9 @@ internal sealed class PeakConfiguration : EntityConfiguration<Peak>
         builder.Property(peak => peak.SourceRevision)
             .HasColumnName("source_revision").HasMaxLength(Peak.MaxSourceRevisionLength);
 
+        builder.Property(peak => peak.ImageUrl)
+            .HasColumnName("image_url").HasMaxLength(Peak.MaxImageUrlLength);
+
         builder.Property(peak => peak.RangeId).HasColumnName("range_id");
     }
 

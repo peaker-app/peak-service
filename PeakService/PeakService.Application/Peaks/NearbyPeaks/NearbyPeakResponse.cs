@@ -8,4 +8,5 @@ public sealed record NearbyPeakResponse(
     double Longitude,
     string? CountryCode,
     string? Region,
+    string? ImageUrl,
     double DistanceMeters);

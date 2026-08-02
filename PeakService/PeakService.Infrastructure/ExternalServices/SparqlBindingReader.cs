@@ -6,10 +6,12 @@ namespace PeakService.Infrastructure.ExternalServices;
 
 internal static class SparqlBindingReader
 {
-#pragma warning disable S5332 // Motivo: es el IRI que Wikidata devuelve literalmente en sus bindings;
-    // solo se usa como prefijo para recortar el QID, nunca como endpoint. Con https no casaría nada.
+#pragma warning disable S5332 // Motivo: son los IRI que Wikidata devuelve literalmente en sus bindings;
+    // solo se usan como prefijo para reconocerlos, nunca como endpoint. Con https no casaría nada.
     private const string EntityPrefix = "http://www.wikidata.org/entity/";
+    private const string CommonsPrefix = "http://commons.wikimedia.org/";
 #pragma warning restore S5332
+    private const string SecureCommonsPrefix = "https://commons.wikimedia.org/";
     private const string PointPrefix = "Point(";
 
     public static PeakSourceRecord? ToRecord(Dictionary<string, SparqlBinding> binding)
@@ -31,7 +33,8 @@ internal static class SparqlBindingReader
             longitude,
             Read(binding, "countryCode")?.ToUpperInvariant(),
             Read(binding, "adminLabel"),
-            Read(binding, "modified"));
+            Read(binding, "modified"),
+            ReadImageUrl(binding));
     }
 
     public static (string WikidataId, PeakNameDraft Name)? ToNameDraft(Dictionary<string, SparqlBinding> binding)
@@ -52,6 +55,22 @@ internal static class SparqlBindingReader
         return uri is null || !uri.StartsWith(EntityPrefix, StringComparison.Ordinal)
             ? null
             : uri[EntityPrefix.Length..];
+    }
+
+    private static string? ReadImageUrl(Dictionary<string, SparqlBinding> binding)
+    {
+        string? url = Read(binding, "image");
+
+        if (url is null)
+        {
+            return null;
+        }
+
+        string secure = url.StartsWith(CommonsPrefix, StringComparison.Ordinal)
+            ? string.Concat(SecureCommonsPrefix, url[CommonsPrefix.Length..])
+            : url;
+
+        return secure.Length > Peak.MaxImageUrlLength ? null : secure;
     }
 
     private static int ReadAltitude(Dictionary<string, SparqlBinding> binding) =>

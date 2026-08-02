@@ -11,7 +11,8 @@ public sealed record PeakSourceRecord(
     double Longitude,
     string? CountryCode,
     string? Region,
-    string? SourceRevision)
+    string? SourceRevision,
+    string? ImageUrl = null)
 {
     public IReadOnlyList<PeakNameDraft> AlternativeNames { get; init; } = [];
 }

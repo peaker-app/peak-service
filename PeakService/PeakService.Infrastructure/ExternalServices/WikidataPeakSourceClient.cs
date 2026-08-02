@@ -179,7 +179,7 @@ internal sealed class WikidataPeakSourceClient(HttpClient httpClient, IOptions<I
         }
 
         return new BandResult(
-            PeakSourcePartition.Loaded([.. records.Select(record => Attach(record, names))]),
+            PeakSourcePartition.Loaded([.. records.Select(record => Attach(record, names, settings.Language))]),
             IsRetriable: false);
     }
 
@@ -197,10 +197,46 @@ internal sealed class WikidataPeakSourceClient(HttpClient httpClient, IOptions<I
         }
     }
 
-    private static PeakSourceRecord Attach(PeakSourceRecord record, Dictionary<string, List<PeakNameDraft>> names) =>
-        names.TryGetValue(record.WikidataId, out List<PeakNameDraft>? drafts)
-            ? record with { AlternativeNames = Alternatives(drafts, record.Name) }
-            : record;
+    private static PeakSourceRecord Attach(
+        PeakSourceRecord record,
+        Dictionary<string, List<PeakNameDraft>> names,
+        string language)
+    {
+        if (!names.TryGetValue(record.WikidataId, out List<PeakNameDraft>? drafts))
+        {
+            return record;
+        }
+
+        string canonicalName = ResolveCanonicalName(record.Name, drafts, language);
+
+        return record with
+        {
+            Name = canonicalName,
+            AlternativeNames = Alternatives(drafts, canonicalName)
+        };
+    }
+
+    private static string ResolveCanonicalName(string sourceName, List<PeakNameDraft> drafts, string language) =>
+        WikidataIdentifier.IsIdentifier(sourceName)
+            ? BestName(drafts, language) ?? sourceName
+            : sourceName;
+
+    private static string? BestName(List<PeakNameDraft> drafts, string language)
+    {
+        List<PeakNameDraft> candidates =
+            [.. drafts.Where(draft => !WikidataIdentifier.IsIdentifier(draft.Name))];
+
+        PeakNameDraft? best =
+            candidates.Find(draft => draft.IsOfficial && SpeaksLanguage(draft, language))
+            ?? candidates.Find(draft => SpeaksLanguage(draft, language))
+            ?? candidates.Find(draft => draft.IsOfficial)
+            ?? candidates.FirstOrDefault();
+
+        return best?.Name;
+    }
+
+    private static bool SpeaksLanguage(PeakNameDraft draft, string language) =>
+        string.Equals(draft.LanguageCode, language, StringComparison.OrdinalIgnoreCase);
 
     private static IReadOnlyList<PeakNameDraft> Alternatives(List<PeakNameDraft> drafts, string canonicalName) =>
     [

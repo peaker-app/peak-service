@@ -8,5 +8,6 @@ internal sealed record PeakNearbyRow(
     double Longitude,
     string? CountryCode,
     string? Region,
+    string? ImageUrl,
     double DistanceMeters,
     long TotalCount);

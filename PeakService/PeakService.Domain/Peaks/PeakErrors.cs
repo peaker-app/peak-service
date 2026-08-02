@@ -20,6 +20,10 @@ public static class PeakErrors
         "Peak.SourceRevisionTooLong",
         $"La revisión de origen no puede superar los {Peak.MaxSourceRevisionLength} caracteres.");
 
+    public static readonly Error ImageUrlTooLong = Error.Validation(
+        "Peak.ImageUrlTooLong",
+        $"La URL de la imagen no puede superar los {Peak.MaxImageUrlLength} caracteres.");
+
     public static readonly Error LatitudeOutOfRange = Error.Validation(
         "Peak.LatitudeOutOfRange",
         "La latitud debe estar entre -90 y 90 grados.");

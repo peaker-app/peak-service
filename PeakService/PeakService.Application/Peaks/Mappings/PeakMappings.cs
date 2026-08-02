@@ -14,6 +14,7 @@ internal static class PeakMappings
         peak.Coordinates.Longitude,
         peak.CountryCode,
         peak.Region,
+        peak.ImageUrl,
         peak.RangeId,
         rangeName,
         [.. peak.AlternativeNames.Select(name => new PeakNameResponse(name.LanguageCode, name.Name, name.IsOfficial))]);

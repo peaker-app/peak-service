@@ -8,4 +8,5 @@ public sealed record PeakListItemResponse(
     double Latitude,
     double Longitude,
     string? CountryCode,
-    string? Region);
+    string? Region,
+    string? ImageUrl);

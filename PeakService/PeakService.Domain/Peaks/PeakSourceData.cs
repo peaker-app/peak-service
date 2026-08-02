@@ -8,4 +8,5 @@ public sealed record PeakSourceData(
     Coordinates Coordinates,
     string? CountryCode,
     string? Region,
-    string? SourceRevision);
+    string? SourceRevision,
+    string? ImageUrl = null);
