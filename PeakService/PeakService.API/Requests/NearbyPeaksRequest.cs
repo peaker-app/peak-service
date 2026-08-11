@@ -1,3 +1,4 @@
+using PeakService.Domain.Peaks;
 using Common.Application.Pagination;
 using PeakService.Application.Peaks.NearbyPeaks;
 
@@ -18,6 +19,6 @@ public sealed record NearbyPeaksRequest
     public NearbyPeaksQuery ToQuery() => new(
         Lat ?? double.NaN,
         Lon ?? double.NaN,
-        Radius ?? 0,
+        Radius ?? NearbySearchLimits.DefaultRadiusMeters,
         new PageRequest(Page ?? PageRequest.MinPage, Size ?? PageRequest.DefaultSize));
 }

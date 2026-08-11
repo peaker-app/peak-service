@@ -9,8 +9,6 @@ namespace PeakService.Application.Peaks.NearbyPeaks;
 internal sealed class NearbyPeaksQueryHandler(IPeakCatalogReader reader)
     : IQueryHandler<NearbyPeaksQuery, PagedResult<NearbyPeakResponse>>
 {
-    public const double MaxRadiusMeters = 200_000;
-
     public async Task<Result<PagedResult<NearbyPeakResponse>>> Handle(
         NearbyPeaksQuery query,
         CancellationToken cancellationToken)
@@ -21,7 +19,7 @@ internal sealed class NearbyPeaksQueryHandler(IPeakCatalogReader reader)
             return Result.Failure<PagedResult<NearbyPeakResponse>>(page.Error);
         }
 
-        if (query.RadiusMeters is <= 0 or > MaxRadiusMeters)
+        if (query.RadiusMeters is <= 0 or > NearbySearchLimits.MaxRadiusMeters)
         {
             return Result.Failure<PagedResult<NearbyPeakResponse>>(PeakErrors.RadiusOutOfRange);
         }

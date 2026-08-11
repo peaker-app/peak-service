@@ -34,7 +34,7 @@ public static class PeakErrors
 
     public static readonly Error RadiusOutOfRange = Error.Validation(
         "Peak.RadiusOutOfRange",
-        "El radio de búsqueda debe ser mayor que 0 y no superar los 200000 metros.");
+        $"El radio de búsqueda debe ser mayor que 0 y no superar los {NearbySearchLimits.MaxRadiusMeters:0} metros.");
 
     public static readonly Error AltitudeRangeInvalid = Error.Validation(
         "Peak.AltitudeRangeInvalid",

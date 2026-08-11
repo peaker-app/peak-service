@@ -1,8 +1,10 @@
 using System.Text.Json.Serialization;
+using Common.API.Caching;
 using Common.API.Documentation;
 using Common.API.Health;
 using Common.API.Middlewares;
 using Common.Infrastructure.Observability;
+using PeakService.API;
 using PeakService.Application;
 using PeakService.Infrastructure;
 using PeakService.Infrastructure.Persistence;
@@ -29,6 +31,7 @@ WebApplication app = builder.Build();
 app.UseMiddleware<ExceptionHandlingMiddleware>();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseSerilogRequestLogging();
+app.UseCatalogEntityTags(CatalogCache.Policy);
 
 if (app.Environment.IsDevelopment())
 {

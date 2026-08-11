@@ -32,7 +32,7 @@ public sealed class NearbyPeaksQueryHandlerTests
     [Theory]
     [InlineData(0)]
     [InlineData(-1)]
-    [InlineData(NearbyPeaksQueryHandler.MaxRadiusMeters + 1)]
+    [InlineData(NearbySearchLimits.MaxRadiusMeters + 1)]
     public async Task Handle_WithRadiusOutOfRange_ReturnsRadiusOutOfRange(double radiusMeters)
     {
         Result<PagedResult<NearbyPeakResponse>> result = await _handler.Handle(

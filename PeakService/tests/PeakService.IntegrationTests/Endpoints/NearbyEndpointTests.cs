@@ -1,3 +1,5 @@
+using PeakService.Domain.Peaks;
+using System.Globalization;
 using System.Net;
 using Common.API.Responses;
 using FluentAssertions;
@@ -49,10 +51,24 @@ public sealed class NearbyEndpointTests(PeakServiceApiFactory factory)
     {
         await factory.ResetAsync();
 
-        HttpResponseMessage response = await factory.CreateClient()
-            .GetAsync("/api/peaks/nearby?lat=42.63&lon=0.65&radius=200001");
+        double beyondMaximum = NearbySearchLimits.MaxRadiusMeters + 1;
+
+        HttpResponseMessage response = await factory.CreateClient().GetAsync(
+            $"/api/peaks/nearby?lat=42.63&lon=0.65&radius={beyondMaximum.ToString(CultureInfo.InvariantCulture)}");
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Nearby_WithoutARadius_UsesTheDefaultInsteadOfFailing()
+    {
+        await factory.ResetAsync();
+        await factory.SeedAsync(TestPeaks.Create("Aneto", 42.63, 0.65));
+
+        HttpResponseMessage response = await factory.CreateClient()
+            .GetAsync("/api/peaks/nearby?lat=42.63&lon=0.65");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
     }
 
     [Fact]
