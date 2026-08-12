@@ -14,7 +14,8 @@ internal static class PeakDrafts
         string? sourceRevision = null,
         Guid? rangeId = null,
         IReadOnlyList<PeakNameDraft>? alternativeNames = null,
-        string? imageUrl = null) =>
+        string? imageUrl = null,
+        PeakImageAttribution? attribution = null) =>
         new(
             Source(
                 wikidataId,
@@ -24,7 +25,8 @@ internal static class PeakDrafts
                 countryCode,
                 region,
                 sourceRevision,
-                imageUrl: imageUrl),
+                imageUrl: imageUrl,
+                attribution: attribution),
             rangeId,
             alternativeNames ?? []);
 
@@ -38,7 +40,8 @@ internal static class PeakDrafts
         string? sourceRevision = null,
         double latitude = 42.6316,
         double longitude = 0.6577,
-        string? imageUrl = null) =>
+        string? imageUrl = null,
+        PeakImageAttribution? attribution = null) =>
         new(
             wikidataId,
             name,
@@ -48,5 +51,8 @@ internal static class PeakDrafts
             countryCode,
             region,
             sourceRevision,
-            imageUrl);
+            imageUrl)
+        {
+            Attribution = attribution ?? PeakImageAttribution.None
+        };
 }

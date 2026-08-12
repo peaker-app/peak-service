@@ -11,6 +11,8 @@ public sealed class Peak : AggregateRoot
     public const int MaxRegionLength = 120;
     public const int MaxSourceRevisionLength = 50;
     public const int MaxImageUrlLength = 500;
+    public const int MaxImageAuthorLength = 200;
+    public const int MaxImageLicenseLength = 60;
 
     private readonly List<PeakName> _alternativeNames = [];
 
@@ -42,6 +44,17 @@ public sealed class Peak : AggregateRoot
 
     public string? ImageUrl { get; private set; }
 
+    public string? ImageAuthor { get; private set; }
+
+    public string? ImageLicense { get; private set; }
+
+    public string? ImageLicenseUrl { get; private set; }
+
+    public string? ImageCreditUrl { get; private set; }
+
+    public PeakImageAttribution Attribution =>
+        new(ImageAuthor, ImageLicense, ImageLicenseUrl, ImageCreditUrl);
+
     public Guid? RangeId { get; private set; }
 
     public IReadOnlyCollection<PeakName> AlternativeNames => _alternativeNames.AsReadOnly();
@@ -55,7 +68,7 @@ public sealed class Peak : AggregateRoot
         }
 
         Peak peak = new(Guid.CreateVersion7(), draft);
-        foreach (PeakNameDraft name in draft.AlternativeNames)
+        foreach (PeakNameDraft name in draft.AlternativeNames.Where(PeakName.IsAcceptable))
         {
             peak._alternativeNames.Add(PeakName.Create(name.LanguageCode, name.Name, name.IsOfficial));
         }
@@ -96,8 +109,10 @@ public sealed class Peak : AggregateRoot
         return PeakUpdateOutcome.Updated;
     }
 
-    private bool SyncAlternativeNames(IReadOnlyList<PeakNameDraft> drafts)
+    private bool SyncAlternativeNames(IReadOnlyList<PeakNameDraft> candidates)
     {
+        List<PeakNameDraft> drafts = [.. candidates.Where(PeakName.IsAcceptable)];
+
         HashSet<(string LanguageCode, string Name)> incoming =
             [.. drafts.Select(draft => (draft.LanguageCode.Trim(), draft.Name.Trim()))];
 
@@ -124,46 +139,90 @@ public sealed class Peak : AggregateRoot
             return Result.Failure(PeakErrors.WikidataIdInvalid);
         }
 
-        if (string.IsNullOrWhiteSpace(source.Name) || source.Name.Length > MaxNameLength)
+        Result text = ValidateText(source);
+
+        return text.IsFailure ? text : ValidateOrigin(source);
+    }
+
+    private static Result ValidateText(PeakSourceData source)
+    {
+        string? name = PeakText.Normalize(source.Name);
+
+        if (string.IsNullOrEmpty(name) || name.Length > MaxNameLength || !PeakText.IsPrintable(name))
         {
             return Result.Failure(PeakErrors.NameInvalid);
         }
 
-        if (source.Region is { Length: > MaxRegionLength })
+        string? region = PeakText.Normalize(source.Region);
+
+        if (region is { Length: > MaxRegionLength })
         {
             return Result.Failure(PeakErrors.RegionTooLong);
         }
 
+        return PeakText.IsPrintable(region) ? Result.Success() : Result.Failure(PeakErrors.RegionInvalid);
+    }
+
+    private static Result ValidateOrigin(PeakSourceData source)
+    {
         if (source.SourceRevision is { Length: > MaxSourceRevisionLength })
         {
             return Result.Failure(PeakErrors.SourceRevisionTooLong);
         }
 
-        return source.ImageUrl is { Length: > MaxImageUrlLength }
-            ? Result.Failure(PeakErrors.ImageUrlTooLong)
-            : Result.Success();
+        if (source.ImageUrl is { Length: > MaxImageUrlLength })
+        {
+            return Result.Failure(PeakErrors.ImageUrlTooLong);
+        }
+
+        if (source.ImageUrl is not null && !IsSecureAbsoluteUrl(source.ImageUrl))
+        {
+            return Result.Failure(PeakErrors.ImageUrlInvalid);
+        }
+
+        return source.Attribution.IsWithinLimits()
+            ? Result.Success()
+            : Result.Failure(PeakErrors.ImageAttributionTooLong);
     }
 
+    private static bool IsSecureAbsoluteUrl(string url) =>
+        Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed) && parsed.Scheme == Uri.UriSchemeHttps;
+
     private bool HasChanges(PeakSourceData source) =>
-        !string.Equals(Name, source.Name, StringComparison.Ordinal)
+        !string.Equals(Name, PeakText.Normalize(source.Name), StringComparison.Ordinal)
         || AltitudeMeters != source.AltitudeMeters
         || ProminenceMeters != source.ProminenceMeters
         || !Coordinates.Equals(source.Coordinates)
         || !string.Equals(CountryCode, source.CountryCode, StringComparison.Ordinal)
-        || !string.Equals(Region, source.Region, StringComparison.Ordinal)
+        || !string.Equals(Region, PeakText.Normalize(source.Region), StringComparison.Ordinal)
         || !string.Equals(SourceRevision, source.SourceRevision, StringComparison.Ordinal)
-        || !string.Equals(ImageUrl, source.ImageUrl, StringComparison.Ordinal);
+        || !string.Equals(ImageUrl, source.ImageUrl, StringComparison.Ordinal)
+        || Attribution != AttributionOf(source);
 
     private void Apply(PeakSourceData source)
     {
         WikidataId = source.WikidataId;
-        Name = source.Name;
+        Name = PeakText.Normalize(source.Name)!;
         AltitudeMeters = source.AltitudeMeters;
         ProminenceMeters = source.ProminenceMeters;
         Coordinates = source.Coordinates;
         CountryCode = source.CountryCode;
-        Region = source.Region;
+        Region = PeakText.Normalize(source.Region);
         SourceRevision = source.SourceRevision;
         ImageUrl = source.ImageUrl;
+        ApplyAttribution(source);
     }
+
+    private void ApplyAttribution(PeakSourceData source)
+    {
+        PeakImageAttribution attribution = AttributionOf(source);
+
+        ImageAuthor = attribution.Author;
+        ImageLicense = attribution.License;
+        ImageLicenseUrl = attribution.LicenseUrl;
+        ImageCreditUrl = attribution.CreditUrl;
+    }
+
+    private static PeakImageAttribution AttributionOf(PeakSourceData source) =>
+        source.ImageUrl is null ? PeakImageAttribution.None : source.Attribution.Normalized();
 }

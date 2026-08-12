@@ -21,11 +21,13 @@ internal sealed class RunPeakIngestionCommandHandler(
         RunPeakIngestionCommand command,
         CancellationToken cancellationToken)
     {
+        PeakIngestionRun? previous = await runRepository.GetLastCompletedAsync(cancellationToken);
+
         PeakIngestionRun run = PeakIngestionRun.Start(dateTimeProvider.UtcNow);
         runRepository.Add(run);
         await unitOfWork.SaveChangesAsync(cancellationToken);
 
-        PeakSourceCursor cursor = await ResolveCursorAsync(command.Mode, cancellationToken);
+        PeakSourceCursor cursor = ResolveCursor(command.Mode, previous);
 
         logger.LogInformation(
             "Peak ingestion run {RunId} started with cursor {ModifiedSinceUtc}", run.Id, cursor.ModifiedSinceUtc);
@@ -33,23 +35,32 @@ internal sealed class RunPeakIngestionCommandHandler(
         await IngestAsync(run, cursor, cancellationToken);
 
         logger.LogInformation(
-            "Peak ingestion run {RunId} finished as {Status}: {Created} created, {Updated} updated, {Failed} failed",
-            run.Id, run.Status, run.PeaksCreated, run.PeaksUpdated, run.PeaksFailed);
+            "Peak ingestion run {RunId} finished as {Status}: {Created} created, {Updated} updated, "
+            + "{Unchanged} unchanged, {Failed} failed",
+            run.Id, run.Status, run.PeaksCreated, run.PeaksUpdated, run.PeaksUnchanged, run.PeaksFailed);
+
+        WarnOnMassChange(run, previous);
 
         return run.ToResponse();
     }
 
-    private async Task<PeakSourceCursor> ResolveCursorAsync(IngestionMode mode, CancellationToken cancellationToken)
+    private void WarnOnMassChange(PeakIngestionRun run, PeakIngestionRun? previous)
     {
-        if (mode is IngestionMode.Full)
+        if (!run.IsMassChangeComparedTo(previous))
         {
-            return PeakSourceCursor.Full;
+            return;
         }
 
-        PeakIngestionRun? lastRun = await runRepository.GetLastCompletedAsync(cancellationToken);
-
-        return lastRun is null ? PeakSourceCursor.Full : PeakSourceCursor.Since(lastRun.StartedAtUtc);
+        logger.LogWarning(
+            "Peak ingestion run {RunId} changed {Changed} peaks, well above the {PreviousChanged} of run "
+            + "{PreviousRunId}: review the source before trusting the catalogue",
+            run.Id, run.PeaksChanged, previous!.PeaksChanged, previous.Id);
     }
+
+    private static PeakSourceCursor ResolveCursor(IngestionMode mode, PeakIngestionRun? previous) =>
+        mode is IngestionMode.Full || previous is null
+            ? PeakSourceCursor.Full
+            : PeakSourceCursor.Since(previous.StartedAtUtc);
 
     private async Task IngestAsync(PeakIngestionRun run, PeakSourceCursor cursor, CancellationToken cancellationToken)
     {
@@ -157,7 +168,7 @@ internal sealed class RunPeakIngestionCommandHandler(
             return Result.Failure(updated.Error);
         }
 
-        return updated.Value is PeakUpdateOutcome.Updated ? run.RecordUpdated() : Result.Success();
+        return updated.Value is PeakUpdateOutcome.Updated ? run.RecordUpdated() : run.RecordUnchanged();
     }
 
     private Result SkipDuplicate(Peak existing, PeakSourceData source)

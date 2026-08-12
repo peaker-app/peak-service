@@ -5,6 +5,9 @@ namespace PeakService.Domain.PeakIngestionRuns;
 
 public sealed class PeakIngestionRun : AggregateRoot
 {
+    public const int MassChangeMinimum = 100;
+    public const int MassChangeFactor = 3;
+
     private PeakIngestionRun()
     {
     }
@@ -23,6 +26,8 @@ public sealed class PeakIngestionRun : AggregateRoot
 
     public int PeaksUpdated { get; private set; }
 
+    public int PeaksUnchanged { get; private set; }
+
     public int PeaksFailed { get; private set; }
 
     public IngestionStatus Status { get; private set; }
@@ -31,12 +36,21 @@ public sealed class PeakIngestionRun : AggregateRoot
 
     public bool IsRunning => Status is IngestionStatus.Running;
 
+    public int PeaksChanged => PeaksCreated + PeaksUpdated;
+
+    public bool IsMassChangeComparedTo(PeakIngestionRun? previous) =>
+        previous is not null
+        && PeaksChanged >= MassChangeMinimum
+        && PeaksChanged > previous.PeaksChanged * MassChangeFactor;
+
     public static PeakIngestionRun Start(DateTime startedAtUtc) =>
         new(Guid.CreateVersion7(), startedAtUtc);
 
     public Result RecordCreated() => Increment(() => PeaksCreated++);
 
     public Result RecordUpdated() => Increment(() => PeaksUpdated++);
+
+    public Result RecordUnchanged() => Increment(() => PeaksUnchanged++);
 
     public Result RecordFailed() => Increment(() => PeaksFailed++);
 

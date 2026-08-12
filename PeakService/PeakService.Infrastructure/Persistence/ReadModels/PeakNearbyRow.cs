@@ -9,5 +9,7 @@ internal sealed record PeakNearbyRow(
     string? CountryCode,
     string? Region,
     string? ImageUrl,
+    string? ImageAuthor,
+    string? ImageLicense,
     double DistanceMeters,
     long TotalCount);

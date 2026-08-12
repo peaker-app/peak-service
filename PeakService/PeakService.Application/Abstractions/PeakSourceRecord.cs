@@ -15,4 +15,6 @@ public sealed record PeakSourceRecord(
     string? ImageUrl = null)
 {
     public IReadOnlyList<PeakNameDraft> AlternativeNames { get; init; } = [];
+
+    public PeakImageAttribution Attribution { get; init; } = PeakImageAttribution.None;
 }

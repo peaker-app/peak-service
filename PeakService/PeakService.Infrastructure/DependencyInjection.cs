@@ -63,9 +63,23 @@ public static class DependencyInjection
             .ValidateOnStart();
 
         services.AddScoped<IPeakDeduplicationStrategy, WikidataThenProximityDeduplicationStrategy>();
+        services.AddImageAttributionSource();
         services.AddPeakSourceClient();
 
         return services;
+    }
+
+    private static void AddImageAttributionSource(this IServiceCollection services) =>
+        services.AddHttpClient<IImageAttributionSource, CommonsImageAttributionSource>(ConfigureAttributionClient)
+            .AddStandardResilienceHandler();
+
+    private static void ConfigureAttributionClient(IServiceProvider provider, HttpClient client)
+    {
+        IngestionOptions settings = provider.GetRequiredService<IOptions<IngestionOptions>>().Value;
+
+        client.BaseAddress = settings.CommonsApiEndpoint;
+        client.Timeout = settings.RequestTimeout;
+        client.DefaultRequestHeaders.UserAgent.ParseAdd(settings.UserAgent);
     }
 
     private static void AddPeakSourceClient(this IServiceCollection services) =>

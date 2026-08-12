@@ -126,4 +126,50 @@ public sealed class PeakIngestionRunTests
 
         run.PeaksCreated.Should().Be(0);
     }
+
+    [Fact]
+    public void IsMassChangeComparedTo_WithoutAPreviousRun_ReportsNothing()
+    {
+        PeakIngestionRun run = RunThatChanged(PeakIngestionRun.MassChangeMinimum * 10);
+
+        run.IsMassChangeComparedTo(null).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsMassChangeComparedTo_WithFewChanges_ReportsNothing()
+    {
+        PeakIngestionRun run = RunThatChanged(PeakIngestionRun.MassChangeMinimum - 1);
+
+        run.IsMassChangeComparedTo(RunThatChanged(0)).Should().BeFalse();
+    }
+
+    [Fact]
+    public void IsMassChangeComparedTo_WithFarMoreChangesThanThePreviousRun_ReportsIt()
+    {
+        PeakIngestionRun run = RunThatChanged(PeakIngestionRun.MassChangeMinimum * 10);
+        PeakIngestionRun previous = RunThatChanged(PeakIngestionRun.MassChangeMinimum);
+
+        run.IsMassChangeComparedTo(previous).Should().BeTrue();
+    }
+
+    [Fact]
+    public void IsMassChangeComparedTo_WithAComparableNumberOfChanges_ReportsNothing()
+    {
+        PeakIngestionRun run = RunThatChanged(PeakIngestionRun.MassChangeMinimum * 2);
+        PeakIngestionRun previous = RunThatChanged(PeakIngestionRun.MassChangeMinimum * 2);
+
+        run.IsMassChangeComparedTo(previous).Should().BeFalse();
+    }
+
+    private static PeakIngestionRun RunThatChanged(int peaks)
+    {
+        PeakIngestionRun run = PeakIngestionRun.Start(StartedAt);
+
+        for (int index = 0; index < peaks; index++)
+        {
+            run.RecordUpdated();
+        }
+
+        return run;
+    }
 }

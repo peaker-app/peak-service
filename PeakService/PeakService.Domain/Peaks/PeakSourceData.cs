@@ -9,4 +9,7 @@ public sealed record PeakSourceData(
     string? CountryCode,
     string? Region,
     string? SourceRevision,
-    string? ImageUrl = null);
+    string? ImageUrl = null)
+{
+    public PeakImageAttribution Attribution { get; init; } = PeakImageAttribution.None;
+}

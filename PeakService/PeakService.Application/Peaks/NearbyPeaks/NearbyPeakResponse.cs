@@ -9,4 +9,6 @@ public sealed record NearbyPeakResponse(
     string? CountryCode,
     string? Region,
     string? ImageUrl,
+    string? ImageAuthor,
+    string? ImageLicense,
     double DistanceMeters);

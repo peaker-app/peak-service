@@ -11,6 +11,8 @@ internal sealed class StubHttpMessageHandler(params StubbedResponse[] responses)
 
     public List<string> ReceivedQueries { get; } = [];
 
+    public List<string> ReceivedUris { get; } = [];
+
     public List<string?> ReceivedUserAgents { get; } = [];
 
     public static StubHttpMessageHandler WithBodies(params string[] bodies) =>
@@ -21,6 +23,7 @@ internal sealed class StubHttpMessageHandler(params StubbedResponse[] responses)
         CancellationToken cancellationToken)
     {
         ReceivedUserAgents.Add(request.Headers.UserAgent.ToString());
+        ReceivedUris.Add(request.RequestUri?.AbsoluteUri ?? string.Empty);
         ReceivedQueries.Add(request.Content is null
             ? string.Empty
             : await request.Content.ReadAsStringAsync(cancellationToken));

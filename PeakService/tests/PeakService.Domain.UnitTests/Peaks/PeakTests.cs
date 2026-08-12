@@ -9,6 +9,9 @@ namespace PeakService.Domain.UnitTests.Peaks;
 
 public sealed class PeakTests
 {
+    private const string LicenseUrl = "https://creativecommons.org/licenses/by-sa/4.0";
+    private const string CreditUrl = "https://commons.wikimedia.org/wiki/File:Aneto.jpg";
+
     [Fact]
     public void Create_WithValidDraft_SucceedsAndCopiesData()
     {
@@ -128,5 +131,79 @@ public sealed class PeakTests
             PeakDrafts.Valid(imageUrl: new string('u', Peak.MaxImageUrlLength + 1)));
 
         result.Error.Should().Be(PeakErrors.ImageUrlTooLong);
+    }
+
+    [Fact]
+    public void Create_WithSurroundingWhitespaceInTheText_StoresItTrimmed()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(name: "  Aneto  ", region: "  Huesca  "));
+
+        result.Value.Should().BeEquivalentTo(new { Name = "Aneto", Region = "Huesca" });
+    }
+
+    [Fact]
+    public void Create_WithAControlCharacterInTheName_ReturnsNameInvalid()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(name: "An" + (char)7 + "eto"));
+
+        result.Error.Should().Be(PeakErrors.NameInvalid);
+    }
+
+    [Fact]
+    public void Create_WithAControlCharacterInTheRegion_ReturnsRegionInvalid()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(region: "Hues" + (char)0 + "ca"));
+
+        result.Error.Should().Be(PeakErrors.RegionInvalid);
+    }
+
+    [Fact]
+    public void Create_WithAnImageUrlThatIsNotHttps_ReturnsImageUrlInvalid()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(imageUrl: "javascript:alert(1)"));
+
+        result.Error.Should().Be(PeakErrors.ImageUrlInvalid);
+    }
+
+    [Fact]
+    public void Create_WithAnAttributedImage_StoresTheCredit()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(
+            imageUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Aneto.jpg",
+            attribution: new PeakImageAttribution("Ana Ruiz", "CC BY-SA 4.0", LicenseUrl, CreditUrl)));
+
+        result.Value.Attribution.Should().Be(
+            new PeakImageAttribution("Ana Ruiz", "CC BY-SA 4.0", LicenseUrl, CreditUrl));
+    }
+
+    [Fact]
+    public void Create_WithAnAttributionButNoImage_DropsTheCredit()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(
+            attribution: new PeakImageAttribution("Ana Ruiz", "CC BY-SA 4.0", LicenseUrl, CreditUrl)));
+
+        result.Value.Attribution.Should().Be(PeakImageAttribution.None);
+    }
+
+    [Fact]
+    public void Create_WithAnAuthorLongerThanTheMaximum_ReturnsImageAttributionTooLong()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(
+            imageUrl: "https://commons.wikimedia.org/wiki/Special:FilePath/Aneto.jpg",
+            attribution: new PeakImageAttribution(new string('a', Peak.MaxImageAuthorLength + 1), "CC0", null, null)));
+
+        result.Error.Should().Be(PeakErrors.ImageAttributionTooLong);
+    }
+
+    [Fact]
+    public void Create_WithAnAlternativeNameLongerThanTheMaximum_DropsIt()
+    {
+        Result<Peak> result = Peak.Create(PeakDrafts.Valid(alternativeNames:
+        [
+            new PeakNameDraft("es", new string('n', PeakName.MaxNameLength + 1), IsOfficial: false),
+            new PeakNameDraft("fr", "Pic d'Aneto", IsOfficial: false)
+        ]));
+
+        result.Value.AlternativeNames.Should().ContainSingle().Which.Name.Should().Be("Pic d'Aneto");
     }
 }

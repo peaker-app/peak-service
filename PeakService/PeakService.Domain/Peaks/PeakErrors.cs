@@ -10,11 +10,16 @@ public static class PeakErrors
 
     public static readonly Error NameInvalid = Error.Validation(
         "Peak.NameInvalid",
-        $"El nombre del pico es obligatorio y no puede superar los {Peak.MaxNameLength} caracteres.");
+        $"El nombre del pico es obligatorio, no puede superar los {Peak.MaxNameLength} caracteres "
+        + "y no puede contener caracteres de control.");
 
     public static readonly Error RegionTooLong = Error.Validation(
         "Peak.RegionTooLong",
         $"La región no puede superar los {Peak.MaxRegionLength} caracteres.");
+
+    public static readonly Error RegionInvalid = Error.Validation(
+        "Peak.RegionInvalid",
+        "La región no puede contener caracteres de control.");
 
     public static readonly Error SourceRevisionTooLong = Error.Validation(
         "Peak.SourceRevisionTooLong",
@@ -23,6 +28,15 @@ public static class PeakErrors
     public static readonly Error ImageUrlTooLong = Error.Validation(
         "Peak.ImageUrlTooLong",
         $"La URL de la imagen no puede superar los {Peak.MaxImageUrlLength} caracteres.");
+
+    public static readonly Error ImageUrlInvalid = Error.Validation(
+        "Peak.ImageUrlInvalid",
+        "La URL de la imagen debe ser una dirección https absoluta.");
+
+    public static readonly Error ImageAttributionTooLong = Error.Validation(
+        "Peak.ImageAttributionTooLong",
+        $"El autor no puede superar los {Peak.MaxImageAuthorLength} caracteres, la licencia los "
+        + $"{Peak.MaxImageLicenseLength} y sus enlaces los {Peak.MaxImageUrlLength}.");
 
     public static readonly Error LatitudeOutOfRange = Error.Validation(
         "Peak.LatitudeOutOfRange",

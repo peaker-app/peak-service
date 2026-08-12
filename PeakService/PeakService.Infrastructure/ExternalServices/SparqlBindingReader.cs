@@ -14,7 +14,9 @@ internal static class SparqlBindingReader
     private const string SecureCommonsPrefix = "https://commons.wikimedia.org/";
     private const string PointPrefix = "Point(";
 
-    public static PeakSourceRecord? ToRecord(Dictionary<string, SparqlBinding> binding)
+    public static PeakSourceRecord? ToRecord(
+        Dictionary<string, SparqlBinding> binding,
+        IReadOnlyList<string> allowedImageHosts)
     {
         string? wikidataId = ReadEntityId(binding, "item");
         string? name = Read(binding, "itemLabel");
@@ -34,7 +36,7 @@ internal static class SparqlBindingReader
             Read(binding, "countryCode")?.ToUpperInvariant(),
             Read(binding, "adminLabel"),
             Read(binding, "modified"),
-            ReadImageUrl(binding));
+            ReadImageUrl(binding, allowedImageHosts));
     }
 
     public static (string WikidataId, PeakNameDraft Name)? ToNameDraft(Dictionary<string, SparqlBinding> binding)
@@ -57,7 +59,9 @@ internal static class SparqlBindingReader
             : uri[EntityPrefix.Length..];
     }
 
-    private static string? ReadImageUrl(Dictionary<string, SparqlBinding> binding)
+    private static string? ReadImageUrl(
+        Dictionary<string, SparqlBinding> binding,
+        IReadOnlyList<string> allowedImageHosts)
     {
         string? url = Read(binding, "image");
 
@@ -70,8 +74,13 @@ internal static class SparqlBindingReader
             ? string.Concat(SecureCommonsPrefix, url[CommonsPrefix.Length..])
             : url;
 
-        return secure.Length > Peak.MaxImageUrlLength ? null : secure;
+        return secure.Length > Peak.MaxImageUrlLength || !IsAllowed(secure, allowedImageHosts) ? null : secure;
     }
+
+    private static bool IsAllowed(string url, IReadOnlyList<string> allowedImageHosts) =>
+        Uri.TryCreate(url, UriKind.Absolute, out Uri? parsed)
+        && parsed.Scheme == Uri.UriSchemeHttps
+        && allowedImageHosts.Contains(parsed.Host, StringComparer.OrdinalIgnoreCase);
 
     private static int ReadAltitude(Dictionary<string, SparqlBinding> binding) =>
         double.TryParse(Read(binding, "elevation"), NumberStyles.Float, CultureInfo.InvariantCulture, out double meters)

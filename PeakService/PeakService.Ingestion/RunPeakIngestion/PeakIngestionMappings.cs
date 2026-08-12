@@ -25,7 +25,10 @@ internal static class PeakIngestionMappings
             record.CountryCode,
             record.Region,
             record.SourceRevision,
-            record.ImageUrl);
+            record.ImageUrl)
+        {
+            Attribution = record.Attribution
+        };
 
         return new IngestedPeak(source, record.AlternativeNames);
     }
@@ -35,6 +38,7 @@ internal static class PeakIngestionMappings
         run.Status.ToString(),
         run.PeaksCreated,
         run.PeaksUpdated,
+        run.PeaksUnchanged,
         run.PeaksFailed,
         run.StartedAtUtc,
         run.FinishedAtUtc,

@@ -51,6 +51,18 @@ internal sealed class PeakConfiguration : EntityConfiguration<Peak>
         builder.Property(peak => peak.ImageUrl)
             .HasColumnName("image_url").HasMaxLength(Peak.MaxImageUrlLength);
 
+        builder.Property(peak => peak.ImageAuthor)
+            .HasColumnName("image_author").HasMaxLength(Peak.MaxImageAuthorLength);
+
+        builder.Property(peak => peak.ImageLicense)
+            .HasColumnName("image_license").HasMaxLength(Peak.MaxImageLicenseLength);
+
+        builder.Property(peak => peak.ImageLicenseUrl)
+            .HasColumnName("image_license_url").HasMaxLength(Peak.MaxImageUrlLength);
+
+        builder.Property(peak => peak.ImageCreditUrl)
+            .HasColumnName("image_credit_url").HasMaxLength(Peak.MaxImageUrlLength);
+
         builder.Property(peak => peak.RangeId).HasColumnName("range_id");
     }
 

@@ -27,4 +27,14 @@ public sealed class PeakName
 
     internal static PeakName Create(string languageCode, string name, bool isOfficial) =>
         new(Guid.CreateVersion7(), languageCode.Trim(), name.Trim(), isOfficial);
+
+    internal static bool IsAcceptable(PeakNameDraft draft) =>
+        IsWithin(draft.LanguageCode, MaxLanguageCodeLength) && IsWithin(draft.Name, MaxNameLength);
+
+    private static bool IsWithin(string value, int maxLength)
+    {
+        string? trimmed = PeakText.Normalize(value);
+
+        return !string.IsNullOrEmpty(trimmed) && trimmed.Length <= maxLength && PeakText.IsPrintable(trimmed);
+    }
 }

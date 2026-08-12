@@ -10,4 +10,6 @@ internal sealed record PeakSearchRow(
     string? CountryCode,
     string? Region,
     string? ImageUrl,
+    string? ImageAuthor,
+    string? ImageLicense,
     long TotalCount);

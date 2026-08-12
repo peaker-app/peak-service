@@ -10,6 +10,9 @@ public sealed class IngestionOptions : IValidatableObject
     public Uri Endpoint { get; init; } = new("https://query.wikidata.org/sparql");
 
     [Required]
+    public Uri CommonsApiEndpoint { get; init; } = new("https://commons.wikimedia.org/w/api.php");
+
+    [Required]
     public string UserAgent { get; init; } = "PeakerIngestion/1.0 (https://github.com/peaker-app)";
 
     public TimeSpan DelayBetweenRequests { get; init; } = TimeSpan.FromSeconds(2);
@@ -43,7 +46,12 @@ public sealed class IngestionOptions : IValidatableObject
     [Required]
     [MinLength(1)]
     public IReadOnlyList<string> AlternativeNameLanguages { get; init; } =
-        ["es", "en", "fr", "it", "de", "ca", "eu", "gl", "pt"];
+        ["es", "en", "fr", "zh", "ar", "it", "de", "ca", "eu", "gl", "pt"];
+
+    [Required]
+    [MinLength(1)]
+    public IReadOnlyList<string> AllowedImageHosts { get; init; } =
+        ["commons.wikimedia.org", "upload.wikimedia.org"];
 
     [Range(0, 100000)]
     public double DuplicateRadiusMeters { get; init; } = 250;
@@ -58,6 +66,13 @@ public sealed class IngestionOptions : IValidatableObject
             yield return new ValidationResult(
                 "At least one entry of AlternativeNameLanguages must be a valid language tag.",
                 [nameof(AlternativeNameLanguages)]);
+        }
+
+        if (AllowedImageHosts.Any(string.IsNullOrWhiteSpace))
+        {
+            yield return new ValidationResult(
+                "AllowedImageHosts must not contain blank entries.",
+                [nameof(AllowedImageHosts)]);
         }
 
         if (MaxElevationMeters <= MinElevationMeters)

@@ -107,6 +107,18 @@ public sealed class WikidataPeakSourceClientTests
         ]}}
         """;
 
+    private const string PeakWithForeignPhoto =
+        """
+        {"results":{"bindings":[
+          {"item":{"value":"http://www.wikidata.org/entity/Q192580"},
+           "itemLabel":{"value":"Aneto"},
+           "elevation":{"value":"3404"},
+           "coord":{"value":"Point(0.6577 42.6316)"},
+           "image":{"value":"https://evil.example.com/wiki/Special:FilePath/Aneto.jpg"},
+           "modified":{"value":"2026-07-01T10:00:00Z"}}
+        ]}}
+        """;
+
     private const string PeakWithoutCoordinates =
         """
         {"results":{"bindings":[
@@ -228,6 +240,24 @@ public sealed class WikidataPeakSourceClientTests
 
         records.Single().ImageUrl.Should()
             .Be("https://commons.wikimedia.org/wiki/Special:FilePath/Aneto%20south.jpg");
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithAnImageOutsideTheAllowedHosts_DiscardsTheUrl()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(PeakWithForeignPhoto, NoNames));
+
+        records.Single().ImageUrl.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task StreamAsync_WithAnImageOutsideTheAllowedHosts_KeepsThePeak()
+    {
+        List<PeakSourceRecord> records = await RecordsAsync(
+            StubHttpMessageHandler.WithBodies(PeakWithForeignPhoto, NoNames));
+
+        records.Single().WikidataId.Should().Be("Q192580");
     }
 
     [Fact]
@@ -512,7 +542,7 @@ public sealed class WikidataPeakSourceClientTests
         httpClient.DefaultRequestHeaders.Accept.Add(
             new MediaTypeWithQualityHeaderValue("application/sparql-results+json"));
 
-        WikidataPeakSourceClient client = new(httpClient, Options.Create(settings));
+        WikidataPeakSourceClient client = new(httpClient, Options.Create(settings), new FakeImageAttributionSource());
 
         List<PeakSourcePartition> partitions = [];
 

@@ -75,6 +75,17 @@ public sealed class RunPeakIngestionCommandHandlerTests
     }
 
     [Fact]
+    public async Task Handle_WithKnownPeakAndIdenticalData_CountsItAsUnchanged()
+    {
+        GivenSource(PeakSourceRecords.Valid());
+        GivenDuplicate(ExistingPeak());
+
+        Result<PeakIngestionRunResponse> result = await RunAsync();
+
+        result.Value.PeaksUnchanged.Should().Be(1);
+    }
+
+    [Fact]
     public async Task Handle_WithNearDuplicateOfAnotherSource_DoesNotCatalogueItTwice()
     {
         Peak existing = ExistingPeak();
@@ -235,7 +246,6 @@ public sealed class RunPeakIngestionCommandHandlerTests
         await RunAsync(IngestionMode.Full);
 
         ReceivedCursor(cursor => !cursor.IsIncremental);
-        await _runRepository.DidNotReceive().GetLastCompletedAsync(Arg.Any<CancellationToken>());
     }
 
     private Task<Result<PeakIngestionRunResponse>> RunAsync(IngestionMode mode = IngestionMode.Automatic) =>

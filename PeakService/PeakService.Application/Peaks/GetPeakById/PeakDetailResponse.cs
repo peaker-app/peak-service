@@ -10,6 +10,10 @@ public sealed record PeakDetailResponse(
     string? CountryCode,
     string? Region,
     string? ImageUrl,
+    string? ImageAuthor,
+    string? ImageLicense,
+    string? ImageLicenseUrl,
+    string? ImageCreditUrl,
     Guid? RangeId,
     string? RangeName,
     IReadOnlyList<PeakNameResponse> AlternativeNames);

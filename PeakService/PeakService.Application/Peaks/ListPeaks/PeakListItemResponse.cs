@@ -9,4 +9,6 @@ public sealed record PeakListItemResponse(
     double Longitude,
     string? CountryCode,
     string? Region,
-    string? ImageUrl);
+    string? ImageUrl,
+    string? ImageAuthor,
+    string? ImageLicense);

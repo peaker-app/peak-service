@@ -5,7 +5,10 @@ using PeakService.Domain.Peaks;
 
 namespace PeakService.Infrastructure.ExternalServices;
 
-internal sealed class WikidataPeakSourceClient(HttpClient httpClient, IOptions<IngestionOptions> options)
+internal sealed class WikidataPeakSourceClient(
+    HttpClient httpClient,
+    IOptions<IngestionOptions> options,
+    IImageAttributionSource attributionSource)
     : IPeakSourceClient
 {
     private readonly SparqlEndpoint _endpoint = new(httpClient);
@@ -144,7 +147,7 @@ internal sealed class WikidataPeakSourceClient(HttpClient httpClient, IOptions<I
                 break;
             }
 
-            if (SparqlBindingReader.ToRecord(binding) is { } record
+            if (SparqlBindingReader.ToRecord(binding, state.Settings.AllowedImageHosts) is { } record
                 && !state.AlreadySeen(record.WikidataId)
                 && batch.Add(record.WikidataId))
             {
@@ -178,10 +181,36 @@ internal sealed class WikidataPeakSourceClient(HttpClient httpClient, IOptions<I
             Collect(outcome.Bindings, names);
         }
 
+        List<PeakSourceRecord> named = [.. records.Select(record => Attach(record, names, settings.Language))];
+
         return new BandResult(
-            PeakSourcePartition.Loaded([.. records.Select(record => Attach(record, names, settings.Language))]),
+            PeakSourcePartition.Loaded(await CreditAsync(named, cancellationToken)),
             IsRetriable: false);
     }
+
+    private async Task<IReadOnlyList<PeakSourceRecord>> CreditAsync(
+        List<PeakSourceRecord> records,
+        CancellationToken cancellationToken)
+    {
+        string[] imageUrls = [.. records.Select(record => record.ImageUrl).OfType<string>().Distinct(StringComparer.Ordinal)];
+
+        if (imageUrls.Length == 0)
+        {
+            return records;
+        }
+
+        IReadOnlyDictionary<string, PeakImageAttribution> attributions =
+            await attributionSource.GetAsync(imageUrls, cancellationToken);
+
+        return [.. records.Select(record => WithAttribution(record, attributions))];
+    }
+
+    private static PeakSourceRecord WithAttribution(
+        PeakSourceRecord record,
+        IReadOnlyDictionary<string, PeakImageAttribution> attributions) =>
+        record.ImageUrl is { } url && attributions.TryGetValue(url, out PeakImageAttribution? attribution)
+            ? record with { Attribution = attribution }
+            : record;
 
     private static void Collect(
         IReadOnlyList<Dictionary<string, SparqlBinding>> bindings,

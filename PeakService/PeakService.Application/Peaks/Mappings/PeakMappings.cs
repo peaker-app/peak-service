@@ -15,6 +15,10 @@ internal static class PeakMappings
         peak.CountryCode,
         peak.Region,
         peak.ImageUrl,
+        peak.ImageAuthor,
+        peak.ImageLicense,
+        peak.ImageLicenseUrl,
+        peak.ImageCreditUrl,
         peak.RangeId,
         rangeName,
         [.. peak.AlternativeNames.Select(name => new PeakNameResponse(name.LanguageCode, name.Name, name.IsOfficial))]);

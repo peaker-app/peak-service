@@ -5,6 +5,7 @@ public sealed record PeakIngestionRunResponse(
     string Status,
     int PeaksCreated,
     int PeaksUpdated,
+    int PeaksUnchanged,
     int PeaksFailed,
     DateTime StartedAtUtc,
     DateTime? FinishedAtUtc,

@@ -19,6 +19,7 @@ internal sealed class PeakIngestionRunConfiguration : EntityConfiguration<PeakIn
         builder.Property(run => run.FinishedAtUtc).HasColumnName("finished_at_utc");
         builder.Property(run => run.PeaksCreated).HasColumnName("peaks_created").IsRequired();
         builder.Property(run => run.PeaksUpdated).HasColumnName("peaks_updated").IsRequired();
+        builder.Property(run => run.PeaksUnchanged).HasColumnName("peaks_unchanged").IsRequired();
         builder.Property(run => run.PeaksFailed).HasColumnName("peaks_failed").IsRequired();
         builder.Property(run => run.Error).HasColumnName("error");
 
