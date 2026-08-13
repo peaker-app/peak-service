@@ -30,7 +30,6 @@ public static class DependencyInjection
         services.AddSingleton<IDateTimeProvider, DateTimeProvider>();
         services.AddSingleton<AuditableEntityInterceptor>();
         services.AddSingleton<OutboxInterceptor>();
-        services.Configure<OutboxOptions>(configuration.GetSection(OutboxOptions.SectionName));
 
         services.AddPeakDbContext();
         services.AddScoped<IUnitOfWork>(provider => provider.GetRequiredService<PeakDbContext>());
@@ -50,7 +49,7 @@ public static class DependencyInjection
         services.AddScoped<IDomainEventHandler<PeakUpdatedDomainEvent>, PeakUpdatedDomainEventHandler>();
         services.AddScoped<IDomainEventHandler<PeakRenamedDomainEvent>, PeakRenamedDomainEventHandler>();
 
-        services.AddHostedService<OutboxProcessor<PeakDbContext>>();
+        services.AddCommonOutbox<PeakDbContext>(configuration);
 
         return services;
     }
