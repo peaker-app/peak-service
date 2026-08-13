@@ -131,6 +131,8 @@ public sealed class PeakServiceApiFactory : WebApplicationFactory<Program>, IAsy
         ["Messaging:Password"] = "peaker",
         ["Messaging:VirtualHost"] = "/",
         ["Outbox:PollingInterval"] = "00:00:01",
+        ["Outbox:RetryBackoffBase"] = "00:00:01",
+        ["Outbox:RetryBackoffCap"] = "00:00:01",
         ["Ingestion:Endpoint"] = "https://query.wikidata.org/sparql",
         ["Ingestion:UserAgent"] = "PeakerIngestionTests/1.0 (tests)"
     };
