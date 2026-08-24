@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+    <ItemGroup>
+        <ProjectReference Include="..\PeakService.Domain\PeakService.Domain.csproj" />
+        <ProjectReference Include="..\..\..\common-library\Common\Common.Application\Common.Application.csproj" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <PackageReference Include="FluentValidation.DependencyInjectionExtensions" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <InternalsVisibleTo Include="PeakService.Application.UnitTests" />
+        <InternalsVisibleTo Include="PeakService.IntegrationTests" />
+        <InternalsVisibleTo Include="DynamicProxyGenAssembly2" />
+    </ItemGroup>
+
+</Project>
