@@ -43,7 +43,7 @@ public static class DependencyInjection
 
     public static IServiceCollection AddEventPublishing(this IServiceCollection services, IConfiguration configuration)
     {
-        services.AddEventBus(configuration);
+        services.AddEventBus(configuration, new EventBusRegistration("peak"));
 
         services.AddScoped<IDomainEventHandler<PeakCreatedDomainEvent>, PeakCreatedDomainEventHandler>();
         services.AddScoped<IDomainEventHandler<PeakUpdatedDomainEvent>, PeakUpdatedDomainEventHandler>();
